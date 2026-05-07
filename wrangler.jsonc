@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "domain-inbox",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-01",
+  "observability": {
+    "enabled": true
+  },
+  "routes": [
+    {
+      "pattern": "mail.525458.xyz",
+      "custom_domain": true
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "INBOX_DB",
+      "database_name": "inbox-db",
+      "database_id": "5adf1225-b4a7-4899-957f-0a9244fca5b3"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "INBOX_BUCKET",
+      "bucket_name": "inbox-emails"
+    }
+  ]
+}

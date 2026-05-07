@@ -1,0 +1,8 @@
+node_modules/
+.wrangler/
+dist/
+*.log
+raw/
+gopay-console.js
+gopay-userscript.js
+.claude/

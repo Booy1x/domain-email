@@ -1,0 +1,22 @@
+{
+  "name": "domain-email",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multi-domain catch-all inbox powered by Cloudflare",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "migrate": "wrangler d1 migrations apply inbox-db",
+    "dev:migrate": "wrangler d1 migrations apply inbox-db --local",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.12.16",
+    "postal-mime": "^2.7.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260501.1",
+    "typescript": "^6.0.3",
+    "wrangler": "^4.87.0"
+  }
+}
