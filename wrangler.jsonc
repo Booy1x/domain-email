@@ -10,7 +10,7 @@
     {
       "binding": "INBOX_DB",
       "database_name": "mail-db",
-      "database_id": "REPLACE_WITH_YOUR_DATABASE_ID"
+      "database_id": "5adf1225-b4a7-4899-957f-0a9244fca5b3"
     }
   ],
   "r2_buckets": [
