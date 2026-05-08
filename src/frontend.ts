@@ -654,7 +654,7 @@ function updateBreadcrumb() {
   }
   var html = '';
   if (state.view === 'home') {
-    html = '<span class="bc-label">最近邮件</span>';
+    html = '';
   } else if (state.view === 'domain') {
     html = '<span class="bc-domain">' + esc(state.domain) + '</span>';
   } else if (state.view === 'rcpt') {
@@ -663,7 +663,7 @@ function updateBreadcrumb() {
       '<span class="bc-rcpt">' + esc(state.rcptUser) + '</span>';
   }
   breadcrumbBar.innerHTML = html;
-  breadcrumbBar.style.display = 'flex';
+  breadcrumbBar.style.display = html ? 'flex' : 'none';
 }
 
 // Home: load recent 5 emails globally
@@ -848,7 +848,7 @@ function renderEmailList() {
   var el = document.getElementById('email-list');
   document.getElementById('email-count').textContent = state.totalLoaded + ' 封';
   if (state.emails.length === 0) {
-    el.innerHTML = '<div class="email-list-empty">暂无邮件</div>';
+    el.innerHTML = '';
     return;
   }
   el.innerHTML = state.emails.map(function(e) {
