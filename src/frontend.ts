@@ -495,7 +495,6 @@ export function inboxPage(domains: DomainData[]): string {
 
     <div class="split">
       <div class="email-list" id="email-list">
-        <div class="email-list-empty">选择一个域名</div>
       </div>
       <div class="preview" id="preview">
         <div class="preview-empty">
