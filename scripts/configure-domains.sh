@@ -2,10 +2,11 @@
 # Batch configure Cloudflare Email Routing for multiple domains
 #
 # Usage:
-#   export CF_API_TOKEN="your-token"
-#   export CF_ACCOUNT_ID="your-account-id"
-#   export TARGET_WORKER="domain-inbox"
 #   ./configure-domains.sh domains.txt
+#
+# Environment variables (optional — will prompt if not set):
+#   CF_API_TOKEN   — Cloudflare API token (Zone:DNS:Edit + Account:Email Routing:Edit)
+#   CF_ACCOUNT_ID  — Cloudflare account ID
 #
 # domains.txt format: one domain per line
 #   example.com
@@ -14,15 +15,40 @@
 set -euo pipefail
 
 CF_API="${CF_API:-https://api.cloudflare.com/client/v4}"
-CF_API_TOKEN="${CF_API_TOKEN:?CF_API_TOKEN required}"
-CF_ACCOUNT_ID="${CF_ACCOUNT_ID:?CF_ACCOUNT_ID required}"
-TARGET_WORKER="${TARGET_WORKER:-domain-inbox}"
+TARGET_WORKER="${TARGET_WORKER:-catch-all-mail}"
 DOMAINS_FILE="${1:?Usage: $0 <domains-file>}"
 
 if [ ! -f "$DOMAINS_FILE" ]; then
   echo "Error: $DOMAINS_FILE not found"
   exit 1
 fi
+
+# ── Interactive fallback for required env vars ────────────────────────
+
+if [ -z "${CF_API_TOKEN:-}" ]; then
+  echo ""
+  echo "需要 Cloudflare API Token 来配置 Email Routing。"
+  echo "你可以前往 https://dash.cloudflare.com/profile/api-tokens 创建一个 Token。"
+  echo "需要的权限：Zone:DNS:Edit, Account:Email Routing:Edit"
+  echo ""
+  read -r -p "请输入 CF_API_TOKEN: " CF_API_TOKEN
+  if [ -z "$CF_API_TOKEN" ]; then
+    echo "❌ 未提供 CF_API_TOKEN，退出"
+    exit 1
+  fi
+fi
+
+if [ -z "${CF_ACCOUNT_ID:-}" ]; then
+  read -r -p "请输入 CF_ACCOUNT_ID (可在 Cloudflare Dashboard 右侧栏找到): " CF_ACCOUNT_ID
+  if [ -z "$CF_ACCOUNT_ID" ]; then
+    echo "❌ 未提供 CF_ACCOUNT_ID，退出"
+    exit 1
+  fi
+fi
+
+export CF_API_TOKEN CF_ACCOUNT_ID
+
+# ── Helper functions ──────────────────────────────────────────────────
 
 # Function to list Cloudflare zones (the domains in your account)
 get_zones() {
@@ -47,11 +73,13 @@ create_catch_all() {
   local worker="$3"
 
   # First, delete existing catch-all rules
-  local rules=$(curl -s -X GET "$CF_API/zones/$zone_id/email/routing/rules" \
+  local rules
+  rules=$(curl -s -X GET "$CF_API/zones/$zone_id/email/routing/rules" \
     -H "Authorization: Bearer $CF_API_TOKEN" \
     -H "Content-Type: application/json")
 
-  local catch_all_ids=$(echo "$rules" | jq -r '.result[] | select(.matchers[].type == "all") | .id' 2>/dev/null || echo "")
+  local catch_all_ids
+  catch_all_ids=$(echo "$rules" | jq -r '.result[] | select(.matchers[].type == "all") | .id' 2>/dev/null || echo "")
   for rid in $catch_all_ids; do
     curl -s -X DELETE "$CF_API/zones/$zone_id/email/routing/rules/$rid" \
       -H "Authorization: Bearer $CF_API_TOKEN" \
@@ -59,7 +87,8 @@ create_catch_all() {
   done
 
   # Create new catch-all → Worker
-  local body=$(cat <<-BODY
+  local body
+  body=$(cat <<-BODY
 {
   "actions": [
     {
@@ -86,6 +115,9 @@ BODY
     --data "$body" | jq -r '.success'
 }
 
+# ── Main ──────────────────────────────────────────────────────────────
+
+echo ""
 echo "=== Fetching zones from Cloudflare ==="
 ZONES_JSON=$(get_zones)
 echo "Found $(echo "$ZONES_JSON" | jq '.result | length') zones total"

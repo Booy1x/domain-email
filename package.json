@@ -1,13 +1,14 @@
 {
-  "name": "domain-email",
+  "name": "catch-all-mail",
   "version": "1.0.0",
   "private": true,
-  "description": "Multi-domain catch-all inbox powered by Cloudflare",
+  "description": "Multi-domain catch-all inbox powered by Cloudflare Workers",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "migrate": "wrangler d1 migrations apply inbox-db",
-    "dev:migrate": "wrangler d1 migrations apply inbox-db --local",
+    "dev": "tsx scripts/check-env.ts && wrangler dev",
+    "deploy": "tsx scripts/deploy.ts",
+    "setup": "tsx scripts/deploy.ts",
+    "migrate": "wrangler d1 migrations apply mail-db",
+    "dev:migrate": "wrangler d1 migrations apply mail-db --local",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -16,6 +17,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260501.1",
+    "tsx": "^4.7.0",
     "typescript": "^6.0.3",
     "wrangler": "^4.87.0"
   }

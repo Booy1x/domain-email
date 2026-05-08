@@ -1,28 +1,22 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "domain-inbox",
+  "name": "catch-all-mail",
   "main": "src/index.ts",
   "compatibility_date": "2026-05-01",
   "observability": {
     "enabled": true
   },
-  "routes": [
-    {
-      "pattern": "mail.525458.xyz",
-      "custom_domain": true
-    }
-  ],
   "d1_databases": [
     {
       "binding": "INBOX_DB",
-      "database_name": "inbox-db",
-      "database_id": "5adf1225-b4a7-4899-957f-0a9244fca5b3"
+      "database_name": "mail-db",
+      "database_id": "REPLACE_WITH_YOUR_DATABASE_ID"
     }
   ],
   "r2_buckets": [
     {
       "binding": "INBOX_BUCKET",
-      "bucket_name": "inbox-emails"
+      "bucket_name": "mail-storage"
     }
   ]
 }
