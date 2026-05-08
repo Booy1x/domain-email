@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "catch-all-mail",
+  "name": "domain-inbox",
   "main": "src/index.ts",
   "compatibility_date": "2026-05-01",
   "observability": {
