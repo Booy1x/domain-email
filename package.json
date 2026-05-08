@@ -9,7 +9,9 @@
     "setup": "tsx scripts/deploy.ts",
     "migrate": "wrangler d1 migrations apply mail-db",
     "dev:migrate": "wrangler d1 migrations apply mail-db --local",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "hono": "^4.12.16",
@@ -19,6 +21,7 @@
     "@cloudflare/workers-types": "^4.20260501.1",
     "tsx": "^4.7.0",
     "typescript": "^6.0.3",
+    "vitest": "^4.1.5",
     "wrangler": "^4.87.0"
   }
 }

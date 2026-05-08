@@ -75,20 +75,22 @@ function sanitizeHtml(html: string): string {
     .replace(/<noscript[\s>][\s\S]*?<\/noscript>/gi, '')
     // Remove <object>…</object>
     .replace(/<object[\s>][\s\S]*?<\/object>/gi, '')
-    // Remove <embed>
-    .replace(/<embed[\s>]?/gi, '')
+    // Remove <embed> (any form, with or without attributes)
+    .replace(/<embed[^>]*>/gi, '')
     // Remove <applet>
     .replace(/<applet[\s>][\s\S]*?<\/applet>/gi, '')
     // Remove <form> (prevent phishing forms inside emails)
     .replace(/<form[\s>][\s\S]*?<\/form>/gi, '')
     // Remove <link> (can leak data via href)
-    .replace(/<link[\s>]?/gi, '')
+    .replace(/<link[^>]*>/gi, '')
     // Remove <meta> (can do redirects)
-    .replace(/<meta[\s>]?/gi, '')
+    .replace(/<meta[^>]*>/gi, '')
     // Remove <base> (can hijack relative URLs)
-    .replace(/<base[\s>]?/gi, '')
+    .replace(/<base[^>]*>/gi, '')
     // Remove <head> entirely
     .replace(/<head[\s>][\s\S]*?<\/head>/gi, '')
+    // Remove closing tags for dangerous/structural elements
+    .replace(/<\/(iframe|body|html|noscript|object|applet|form|embed|link|meta|base|script)\s*>/gi, '')
     // Remove XML/CDATA sections
     .replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '')
     // Remove comments (can contain conditional IE exploits)
@@ -167,8 +169,8 @@ function processTag(tag: string): string {
   }
 
   // Special handling for allowed tags with extra restrictions
-  if (tagName === 'iframe') {
-    return ''; // Never allow iframes inside email content
+  if (tagName === 'iframe' || tagName === 'body' || tagName === 'html') {
+    return ''; // Never allow structural document tags inside email content
   }
 
   if (tagName === 'svg') {
