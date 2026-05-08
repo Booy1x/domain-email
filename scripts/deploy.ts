@@ -102,6 +102,32 @@ async function checkWrangler() {
 
 // ── step 2: create D1 database ────────────────────────────────────────
 
+async function getDatabaseIdFromWrangler(): Promise<string | null> {
+  // Try to get existing D1 database ID from wrangler
+  const listResult = spawnSync(
+    "wrangler",
+    ["d1", "list", "--json"],
+    { stdio: "pipe", shell: true, cwd: process.cwd() }
+  );
+  const output = listResult.stdout?.toString() ?? "";
+  try {
+    const list = JSON.parse(output);
+    if (Array.isArray(list)) {
+      const found = list.find((db: any) => db.name === "mail-db" || db.database_name === "mail-db");
+      if (found) return found.uuid ?? found.database_id ?? null;
+    }
+  } catch {}
+  // Fallback: try non-JSON output
+  const lines = output.split("\n");
+  for (const line of lines) {
+    if (line.includes("mail-db")) {
+      const match = line.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      if (match) return match[1];
+    }
+  }
+  return null;
+}
+
 async function createDatabase(): Promise<string> {
   console.log("── 步骤 2/6: 创建 D1 数据库 ──\n");
 
@@ -115,6 +141,20 @@ async function createDatabase(): Promise<string> {
     if (reuse) {
       console.log("✅ 复用已有数据库\n");
       return existingId as string;
+    }
+  }
+
+  // Try to auto-detect existing D1 database from wrangler
+  console.log("正在查找已有的 D1 数据库 mail-db...");
+  const detectedId = await getDatabaseIdFromWrangler();
+  if (detectedId) {
+    console.log(`✅ 找到已有数据库，ID: ${detectedId}`);
+    const useDetected = await promptYesNo("是否复用此数据库？");
+    if (useDetected) {
+      config.d1_databases[0].database_id = detectedId;
+      writeJsonc(wranglerPath, config);
+      console.log(`✅ 已自动写入 ${wranglerPath}\n`);
+      return detectedId;
     }
   }
 

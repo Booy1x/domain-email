@@ -7,7 +7,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 function runSilent(cmd: string, args: string[]): string {
   const result = spawnSync(cmd, args, { stdio: "pipe", shell: true, cwd: process.cwd() });
@@ -38,7 +38,7 @@ if (loggedIn) {
   checks.push({ ok: false, message: "未登录 Cloudflare。请先运行：wrangler login" });
 }
 
-// 3. Check wrangler.jsonc has real database ID
+// 3. Check wrangler.jsonc has real database ID (auto-detect from wrangler if placeholder)
 try {
   const raw = readFileSync("wrangler.jsonc", "utf-8");
   const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
@@ -48,7 +48,38 @@ try {
   if (dbId && dbId !== "REPLACE_WITH_YOUR_DATABASE_ID") {
     checks.push({ ok: true, message: `D1 数据库 ID: ${dbId}` });
   } else {
-    checks.push({ ok: false, message: "D1 数据库尚未创建（wrangler.jsonc 中的 database_id 为占位符）" });
+    // Try to auto-detect from wrangler
+    console.log("  🔍 database_id 为占位符，尝试从 wrangler 自动获取...");
+    const listOutput = runSilent("wrangler", ["d1", "list", "--json"]);
+    let detectedId: string | null = null;
+    try {
+      const list = JSON.parse(listOutput);
+      if (Array.isArray(list)) {
+        const found = list.find((db: any) => db.name === "mail-db" || db.database_name === "mail-db");
+        if (found) detectedId = found.uuid ?? found.database_id ?? null;
+      }
+    } catch {
+      const lines = listOutput.split("\n");
+      for (const line of lines) {
+        if (line.includes("mail-db")) {
+          const match = line.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+          if (match) { detectedId = match[1]; break; }
+        }
+      }
+    }
+    if (detectedId) {
+      config.d1_databases[0].database_id = detectedId;
+      const newStripped = JSON.stringify(config, null, 2);
+      // Preserve comments by only replacing the database_id line
+      const newRaw = raw.replace(
+        /"database_id"\s*:\s*"REPLACE_WITH_YOUR_DATABASE_ID"/,
+        `"database_id": "${detectedId}"`
+      );
+      writeFileSync("wrangler.jsonc", newRaw, "utf-8");
+      checks.push({ ok: true, message: `D1 数据库 ID: ${detectedId}（已自动从 wrangler 获取并写入）` });
+    } else {
+      checks.push({ ok: false, message: "D1 数据库尚未创建（wrangler.jsonc 中的 database_id 为占位符）" });
+    }
   }
 } catch {
   checks.push({ ok: false, message: "无法读取 wrangler.jsonc" });
