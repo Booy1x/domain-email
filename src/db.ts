@@ -46,6 +46,76 @@ export interface ListEmailsOptions {
   rcptUser?: string;
 }
 
+// ============================================================
+// FTS5 search
+// ============================================================
+
+export async function searchEmails(
+  db: D1Database,
+  opts: ListEmailsOptions
+): Promise<{ emails: EmailListRow[]; cursor: string | null }> {
+  const limit = Math.min(opts.limit || 50, 100);
+  const params: unknown[] = [];
+  let query: string;
+
+  // Build FTS query — support multi-word AND search
+  // Each token is matched against all indexed columns via FTS5
+  const ftsQuery = (opts.q || '').trim().split(/\s+/).filter(Boolean).map(t => `"${t.replace(/"/g, '""')}"`).join(' AND ');
+
+  if (opts.domain && opts.rcptUser) {
+    // Domain + recipient filter
+    query = `
+      SELECT e.id, e.domain, e.mail_from, e.rcpt_to, e.subject, e.date, e.is_read, e.is_flagged, e.created_at
+      FROM emails_fts f
+      JOIN emails e ON e.rowid = f.rowid AND e.deleted_at IS NULL
+      WHERE emails_fts MATCH ?
+        AND e.domain = ?
+        AND SUBSTR(e.rcpt_to, 1, INSTR(e.rcpt_to, '@') - 1) = ?
+      ORDER BY e.date DESC LIMIT ?`;
+    params.push(ftsQuery, opts.domain, opts.rcptUser, limit + 1);
+  } else if (opts.domain) {
+    query = `
+      SELECT e.id, e.domain, e.mail_from, e.rcpt_to, e.subject, e.date, e.is_read, e.is_flagged, e.created_at
+      FROM emails_fts f
+      JOIN emails e ON e.rowid = f.rowid AND e.deleted_at IS NULL
+      WHERE emails_fts MATCH ? AND e.domain = ?
+      ORDER BY e.date DESC LIMIT ?`;
+    params.push(ftsQuery, opts.domain, limit + 1);
+  } else if (opts.rcptUser) {
+    query = `
+      SELECT e.id, e.domain, e.mail_from, e.rcpt_to, e.subject, e.date, e.is_read, e.is_flagged, e.created_at
+      FROM emails_fts f
+      JOIN emails e ON e.rowid = f.rowid AND e.deleted_at IS NULL
+      WHERE emails_fts MATCH ?
+        AND SUBSTR(e.rcpt_to, 1, INSTR(e.rcpt_to, '@') - 1) = ?
+      ORDER BY e.date DESC LIMIT ?`;
+    params.push(ftsQuery, opts.rcptUser, limit + 1);
+  } else {
+    // Global search
+    query = `
+      SELECT e.id, e.domain, e.mail_from, e.rcpt_to, e.subject, e.date, e.is_read, e.is_flagged, e.created_at
+      FROM emails_fts f
+      JOIN emails e ON e.rowid = f.rowid AND e.deleted_at IS NULL
+      WHERE emails_fts MATCH ?
+      ORDER BY e.date DESC LIMIT ?`;
+    params.push(ftsQuery, limit + 1);
+  }
+
+  // Cursor-based pagination for FTS results
+  if (opts.cursor) {
+    query = query.replace('ORDER BY e.date DESC LIMIT ?', 'AND e.date < ? ORDER BY e.date DESC LIMIT ?');
+    params.splice(params.length - 1, 0, opts.cursor);
+  }
+
+  const result = await db.prepare(query).bind(...params).all<EmailListRow>();
+  const rows = result.results || [];
+  const hasMore = rows.length > limit;
+  const emails = hasMore ? rows.slice(0, limit) : rows;
+  const cursor = hasMore ? emails[emails.length - 1].date : null;
+
+  return { emails, cursor };
+}
+
 export interface RecipientGroup {
   rcpt_user: string;
   total: number;
@@ -83,6 +153,11 @@ export async function listEmails(
   db: D1Database,
   opts: ListEmailsOptions
 ): Promise<{ emails: EmailListRow[]; cursor: string | null }> {
+  // Use FTS5 for search queries, regular query for browsing
+  if (opts.q && opts.q.trim()) {
+    return searchEmails(db, opts);
+  }
+
   const limit = Math.min(opts.limit || 50, 100);
   let query = `SELECT id, domain, mail_from, rcpt_to, subject, date, is_read, is_flagged, created_at FROM emails WHERE deleted_at IS NULL`;
   const params: unknown[] = [];
@@ -94,11 +169,6 @@ export async function listEmails(
   if (opts.rcptUser) {
     query += ` AND SUBSTR(rcpt_to, 1, INSTR(rcpt_to, '@') - 1) = ?`;
     params.push(opts.rcptUser);
-  }
-  if (opts.q) {
-    query += ` AND (subject LIKE ? OR mail_from LIKE ? OR rcpt_to LIKE ?)`;
-    const like = `%${opts.q}%`;
-    params.push(like, like, like);
   }
 
   query += ` ORDER BY date DESC LIMIT ?`;
