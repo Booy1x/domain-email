@@ -3,6 +3,10 @@
   "name": "domain-inbox",
   "main": "src/index.ts",
   "compatibility_date": "2026-05-01",
+  "workers_dev": false,
+  "routes": [
+    { "pattern": "mail.525458.xyz/*", "zone_name": "525458.xyz" }
+  ],
   "observability": {
     "enabled": true
   },

@@ -135,24 +135,46 @@ export function inboxPage(domains: DomainData[]): string {
     border-bottom: 1px solid var(--border);
   }
 
-  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo { display: flex; align-items: center; gap: 14px; }
 
   .logo-icon {
-    width: 36px; height: 36px; border-radius: var(--radius);
-    background: var(--accent-dim);
-    border: 1px solid rgba(200,149,108,0.2);
+    width: 40px; height: 40px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent-dim), rgba(200,149,108,0.06));
+    border: 1px solid rgba(200,149,108,0.18);
     display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    position: relative; overflow: hidden;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
   }
-  .logo-icon svg { width: 16px; height: 16px; color: var(--accent); }
+  .logo-icon::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(circle at 30% 25%, rgba(200,149,108,0.12), transparent 60%);
+    pointer-events: none;
+  }
+  .logo:hover .logo-icon {
+    border-color: rgba(200,149,108,0.35);
+    box-shadow: 0 0 16px rgba(200,149,108,0.1);
+  }
+  .logo-icon svg { width: 20px; height: 20px; color: var(--accent); position: relative; z-index: 1; }
 
+  .logo-text { display: flex; flex-direction: column; gap: 1px; }
   .logo-text h1 {
     font-family: 'DM Serif Display', 'Noto Serif SC', Georgia, serif;
-    font-size: 15px; font-weight: 400; letter-spacing: 0.02em;
-    color: var(--text-1); line-height: 1.2;
+    font-size: 16px; font-weight: 400; letter-spacing: 0.03em;
+    color: var(--text-1); line-height: 1.25;
+    display: flex; align-items: baseline; gap: 3px;
   }
-  .logo-text p {
-    font-size: 10px; color: var(--text-3);
-    letter-spacing: 0.08em; text-transform: uppercase; margin-top: 2px;
+  .logo-text h1 .logo-word-domain { opacity: 0.55; font-size: 14px; }
+  .logo-text h1 .logo-word-inbox { color: var(--accent-text); }
+  .logo-text .logo-sub {
+    font-family: 'Noto Serif SC', 'DM Serif SC', Georgia, serif;
+    font-size: 10.5px; color: var(--text-3);
+    letter-spacing: 0.16em; margin-top: 1px;
+    font-weight: 400;
+  }
+  .logo-text .logo-sub::before {
+    content: ''; display: inline-block; width: 10px; height: 1px;
+    background: var(--accent); opacity: 0.4; vertical-align: middle;
+    margin-right: 6px; position: relative; top: -1px;
   }
 
   .sidebar-label {
@@ -456,11 +478,16 @@ export function inboxPage(domains: DomainData[]): string {
     <div class="sidebar-header">
       <div class="logo">
         <div class="logo-icon">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <rect x="2" y="5" width="20" height="14" rx="2.5" stroke-width="1.4"/>
+            <path d="M2 8.5l8.7 5.8a1.5 1.5 0 001.6 0L21 8.5" stroke-width="1.4" stroke-linecap="round"/>
+            <circle cx="17.5" cy="7" r="3" fill="var(--accent)" stroke="var(--bg-surface)" stroke-width="1.5" opacity="0.85"/>
+            <text x="17.5" y="8.2" text-anchor="middle" font-size="3.5" font-weight="700" fill="var(--bg-surface)" font-family="monospace" stroke="none">D</text>
+          </svg>
         </div>
         <div class="logo-text">
-          <h1>Domain Inbox</h1>
-          <p>多域名邮件收件箱</p>
+          <h1><span class="logo-word-domain">Domain</span><span class="logo-word-inbox">Inbox</span></h1>
+          <span class="logo-sub">多域名邮件收件箱</span>
         </div>
       </div>
     </div>
