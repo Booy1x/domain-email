@@ -106,7 +106,7 @@ export function inboxPage(domains: DomainData[]): string {
     font-family: 'DM Sans', 'Noto Sans SC', system-ui, sans-serif;
     background: var(--bg);
     color: var(--text-1);
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -469,6 +469,32 @@ export function inboxPage(domains: DomainData[]): string {
   @keyframes spin { to { transform: rotate(360deg); } }
   .loading-wrap { display: flex; align-items: center; justify-content: center; height: 160px; }
   .error-msg { text-align: center; padding: 40px; color: var(--red); font-size: 13px; }
+
+  /* ── Toast notifications ── */
+  .toast-container {
+    position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+    display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+  }
+  .toast {
+    pointer-events: auto;
+    background: var(--bg-elevated); border: 1px solid var(--border-strong);
+    border-radius: 10px; padding: 14px 18px; min-width: 280px; max-width: 380px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.15);
+    cursor: pointer; position: relative; overflow: hidden;
+    animation: toastIn 0.35s cubic-bezier(0.2, 0, 0, 1);
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+  .toast:hover { transform: translateY(-2px); }
+  .toast.toast-out { animation: toastOut 0.25s cubic-bezier(0.4, 0, 1, 1) forwards; }
+  .toast-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .toast-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+  .toast-from { font-size: 12px; font-weight: 500; color: var(--accent-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+  .toast-time { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--text-3); flex-shrink: 0; margin-left: auto; }
+  .toast-subject { font-size: 13px; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .toast-bar { position: absolute; bottom: 0; left: 0; height: 2px; background: var(--accent); border-radius: 0 0 10px 10px; animation: toastBar 5s linear forwards; }
+  @keyframes toastIn { from { opacity: 0; transform: translateX(120%); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes toastOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(120%); } }
+  @keyframes toastBar { from { width: 100%; } to { width: 0%; } }
 </style>
 </head>
 <body>
@@ -532,6 +558,8 @@ export function inboxPage(domains: DomainData[]): string {
     </div>
   </main>
 </div>
+
+<div class="toast-container" id="toast-container"></div>
 
 <script>
 var state = {
@@ -1016,6 +1044,118 @@ function jsStringToColor(str) {
   var l = 40 + (Math.abs(hash >> 16) % 15);
   return 'hsl(' + h + ', ' + s + '%, ' + l + '%)';
 }
+
+// ── Toast notification system ──
+var lastSeenTs = null;
+
+// Update lastSeenTs whenever we load emails
+function updateLastSeenTs() {
+  if (state.emails && state.emails.length > 0) {
+    var newest = state.emails[0];
+    if (newest.created_at && (!lastSeenTs || newest.created_at > lastSeenTs)) {
+      lastSeenTs = newest.created_at;
+    }
+  }
+}
+
+// Show a toast for a new email
+function showToast(email) {
+  var container = document.getElementById('toast-container');
+  if (!container) return;
+  var el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML =
+    '<div class="toast-header">' +
+      '<span class="toast-dot"></span>' +
+      '<span class="toast-from">' + esc(email.mail_from || '未知发件人') + '</span>' +
+      '<span class="toast-time">' + esc(formatTime(email.created_at)) + '</span>' +
+    '</div>' +
+    '<div class="toast-subject">' + esc(email.subject || '(无主题)') + '</div>' +
+    '<div class="toast-bar"></div>';
+  el.addEventListener('click', function() {
+    dismissToast(el);
+    // Navigate to the email: find it in the list or load it
+    var existing = document.querySelector('.email-card[data-id="' + email.id + '"]');
+    if (existing) {
+      existing.click();
+      existing.scrollIntoView({ block: 'nearest' });
+    }
+  });
+  container.appendChild(el);
+  setTimeout(function() { dismissToast(el); }, 5000);
+}
+
+function dismissToast(el) {
+  if (!el || el.classList.contains('toast-out')) return;
+  el.classList.add('toast-out');
+  setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+}
+
+// Poll for new emails every 15s
+function startPolling() {
+  setInterval(function() {
+    if (!lastSeenTs) return;
+    fetch('/api/emails/since?ts=' + encodeURIComponent(lastSeenTs))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.emails && data.emails.length > 0) {
+          // Newest first from API — show oldest-first so they stack naturally
+          var emails = data.emails.slice().reverse();
+          for (var i = 0; i < emails.length; i++) {
+            showToast(emails[i]);
+          }
+          // Update lastSeenTs to the newest
+          lastSeenTs = data.emails[0].created_at;
+        }
+      })
+      .catch(function() {});
+  }, 15000);
+}
+
+// Hook into existing email loads to track lastSeenTs
+var originalLoadHomeEmails = loadHomeEmails;
+loadHomeEmails = function() {
+  originalLoadHomeEmails();
+  // After loadHomeEmails completes, update lastSeenTs
+  var check = setInterval(function() {
+    if (!state.loading) {
+      clearInterval(check);
+      updateLastSeenTs();
+    }
+  }, 50);
+};
+
+var originalRenderEmailList = renderEmailList;
+renderEmailList = function() {
+  originalRenderEmailList();
+  updateLastSeenTs();
+};
+
+// Override loadEmails to also track lastSeenTs after fetch
+var originalLoadEmails = loadEmails;
+loadEmails = function(reset) {
+  var prevLoading = state.loading;
+  originalLoadEmails(reset);
+  var check = setInterval(function() {
+    if (!state.loading && prevLoading) {
+      clearInterval(check);
+      updateLastSeenTs();
+    }
+    prevLoading = state.loading;
+  }, 50);
+};
+
+// Start polling once DOM is ready
+setTimeout(function() {
+  // Initialize lastSeenTs from current emails if any
+  updateLastSeenTs();
+  if (!lastSeenTs) {
+    // Fallback: use current time minus 1min so we catch near-immediate emails
+    var d = new Date(Date.now() - 60000);
+    lastSeenTs = d.toISOString();
+  }
+  startPolling();
+}, 1000);
 <\/script>
 </body>
 </html>`;

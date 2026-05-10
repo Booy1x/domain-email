@@ -395,6 +395,17 @@ app.get('/api/emails/recent', async (c) => {
   return c.json(result);
 });
 
+// Emails since a given timestamp (for polling new emails)
+app.get('/api/emails/since', async (c) => {
+  const ts = c.req.query('ts');
+  if (!ts) return c.json({ error: 'missing ts param' }, 400);
+  const result = await c.env.INBOX_DB
+    .prepare('SELECT id, mail_from, subject, created_at FROM emails WHERE created_at > ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 10')
+    .bind(ts)
+    .all<{ id: string; mail_from: string; subject: string; created_at: string }>();
+  return c.json({ emails: result.results || [] });
+});
+
 // List domains with recipients
 app.get('/api/domains', async (c) => {
   const data = await getDomainsWithRecipients(c.env.INBOX_DB);
