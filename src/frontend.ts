@@ -1106,6 +1106,8 @@ function startPolling() {
           }
           // Update lastSeenTs to the newest
           lastSeenTs = data.emails[0].created_at;
+          // Auto-refresh list if user is on home view
+          if (state.view === 'home') loadHomeEmails();
         }
       })
       .catch(function() {});
