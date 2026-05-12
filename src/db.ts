@@ -259,33 +259,43 @@ export interface DomainWithRecipients {
 }
 
 export async function getDomainsWithRecipients(db: D1Database): Promise<{ domains: DomainWithRecipients[] }> {
+  // Single query for domain counts
   const domainsResult = await db.prepare(
     `SELECT domain, COUNT(*) as count FROM emails WHERE deleted_at IS NULL GROUP BY domain ORDER BY domain`
   ).all<{ domain: string; count: number }>();
-
   const domains = domainsResult.results || [];
-  const result: DomainWithRecipients[] = [];
+  if (domains.length === 0) return { domains: [] };
 
-  for (const d of domains) {
-    const recipientsResult = await db.prepare(`
-      SELECT
-        SUBSTR(rcpt_to, 1, INSTR(rcpt_to, '@') - 1) AS rcpt_user,
-        COUNT(*) AS total,
-        SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) AS unread,
-        MAX(date) AS last_date
-      FROM emails
-      WHERE deleted_at IS NULL AND domain = ?
-      GROUP BY rcpt_user ORDER BY last_date DESC
-    `).bind(d.domain).all<RecipientGroup>();
+  // Single query for all recipient groups across all domains
+  const recipientsResult = await db.prepare(`
+    SELECT
+      domain,
+      SUBSTR(rcpt_to, 1, INSTR(rcpt_to, '@') - 1) AS rcpt_user,
+      COUNT(*) AS total,
+      SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) AS unread,
+      MAX(date) AS last_date
+    FROM emails
+    WHERE deleted_at IS NULL
+    GROUP BY domain, rcpt_user
+    ORDER BY domain, last_date DESC
+  `).all<{ domain: string } & RecipientGroup>();
 
-    result.push({
-      domain: d.domain,
-      count: d.count,
-      recipients: recipientsResult.results || [],
-    });
+  // Group recipients by domain in memory
+  const recipientsByDomain = new Map<string, RecipientGroup[]>();
+  for (const r of (recipientsResult.results || [])) {
+    const { domain, ...group } = r;
+    const list = recipientsByDomain.get(domain);
+    if (list) list.push(group);
+    else recipientsByDomain.set(domain, [group]);
   }
 
-  return { domains: result };
+  return {
+    domains: domains.map(d => ({
+      domain: d.domain,
+      count: d.count,
+      recipients: recipientsByDomain.get(d.domain) || [],
+    })),
+  };
 }
 
 export function getDomains(db: D1Database): Promise<D1Result<{ domain: string; count: number }[]>> {
