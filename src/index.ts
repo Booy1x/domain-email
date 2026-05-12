@@ -87,7 +87,7 @@ async function handleEmail(
 // ============================================================
 const app = new Hono<{ Bindings: Env }>();
 
-app.use('/api/*', cors({ origin: '*' }));
+app.use('/api/*', cors({ origin: 'https://mail.525458.xyz' }));
 
 // Frontend page
 app.get('/', async (c) => {
@@ -150,6 +150,10 @@ app.get('/api/emails/:id/attachments', async (c) => {
 // Get attachment content from R2
 app.get('/api/attachments/:key', async (c) => {
   const key = c.req.param('key');
+  // Validate key format to prevent path traversal
+  if (!/^attachments\/[0-9a-f-]{36}\/[^/]+$/.test(key)) {
+    return c.json({ error: 'invalid key' }, 400);
+  }
   const obj = await c.env.INBOX_BUCKET.get(key);
   if (!obj) return c.json({ error: 'not found' }, 404);
   const headers = new Headers();
@@ -167,7 +171,8 @@ app.get('/api/emails/:id/raw', async (c) => {
   if (!obj) return c.json({ error: 'raw email not found' }, 404);
   const headers = new Headers();
   obj.writeHttpMetadata(headers);
-  headers.set('Content-Disposition', `attachment; filename="${email.subject || 'email'}.eml"`);
+  const safeFilename = (email.subject || 'email').replace(/["\r\n\0\\]/g, '').slice(0, 200);
+  headers.set('Content-Disposition', `attachment; filename="${safeFilename}.eml"`);
   return c.body(obj.body, { headers });
 });
 

@@ -938,7 +938,7 @@ function loadEmailDetail(id) {
       var body;
       if (hasHtml) {
         var iframeId = 'email-frame-' + id;
-        body = '<iframe id="' + iframeId + '" class="email-iframe" sandbox="allow-same-origin" scrolling="no" frameborder="0" style="width:100%;border:0;overflow:hidden;box-shadow:none;display:block;"></iframe>';
+        body = '<iframe id="' + iframeId + '" class="email-iframe" sandbox="" scrolling="no" frameborder="0" style="width:100%;border:0;overflow:hidden;box-shadow:none;display:block;"></iframe>';
         setTimeout(function() {
           var iframe = document.getElementById(iframeId);
           if (!iframe) return;
@@ -995,7 +995,7 @@ function loadEmailDetail(id) {
             .replace(/(border[\w-]*|outline)\s*:\s*[^;"]*/gi, '')
             .replace(/bgcolor\s*=\s*["']?[^"'\s>]*/gi, '')
             .replace(/background(?:-color)?\s*:\s*(?:#fff(?:fff)?|rgb(?:a)?\s*\(\s*255\s*,\s*255\s*,\s*255\s*(?:,\s*[^)]*)?\s*\))\s*[;"]?/gi, '');
-          body = '<iframe class="email-iframe" sandbox="allow-same-origin" scrolling="no" style="width:100%;border:none;overflow:hidden;" srcdoc="' + esc(cleanText.replace(/"/g, '&quot;')) + '"></iframe>';
+          body = '<iframe class="email-iframe" sandbox="" scrolling="no" style="width:100%;border:none;overflow:hidden;" srcdoc="' + esc(cleanText.replace(/"/g, '&quot;')) + '"></iframe>';
         } else {
           body = '<pre class="preview-body" style="background:var(--bg-surface);border:1px solid var(--border);padding:24px;border-radius:10px;">' + esc(email.body_text) + '</pre>';
         }
