@@ -24,7 +24,7 @@ export function inboxPage(domains: DomainData[]): string {
             <span class="tree-arrow">▶</span>
             <span class="domain-avatar" style="background:${stringToColor(d.domain)}">${escHtml(d.domain.charAt(0).toUpperCase())}</span>
             <span class="domain-name">${escHtml(d.domain)}</span>
-            <span class="domain-count">${d.count}封 / ${d.recipients.length}人</span>
+            <span class="domain-count">${d.count}封 · ${d.recipients.length}账户</span>
           </div>
           <ul class="rcpt-list">${rcptItems}</ul>
         </li>`;
