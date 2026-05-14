@@ -24,7 +24,7 @@ export function inboxPage(domains: DomainData[]): string {
             <span class="tree-arrow">▶</span>
             <span class="domain-avatar" style="background:${stringToColor(d.domain)}">${escHtml(d.domain.charAt(0).toUpperCase())}</span>
             <span class="domain-name">${escHtml(d.domain)}</span>
-            <span class="domain-count">${d.count}</span>
+            <span class="domain-count">${d.recipients.length}</span>
           </div>
           <ul class="rcpt-list">${rcptItems}</ul>
         </li>`;
@@ -491,7 +491,7 @@ export function inboxPage(domains: DomainData[]): string {
   .toast-from { font-size: 12px; font-weight: 500; color: var(--accent-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
   .toast-time { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--text-3); flex-shrink: 0; margin-left: auto; }
   .toast-subject { font-size: 13px; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .toast-bar { position: absolute; bottom: 0; left: 0; height: 2px; background: var(--accent); border-radius: 0 0 10px 10px; animation: toastBar 5s linear forwards; }
+  .toast-bar { position: absolute; bottom: 0; left: 0; height: 2px; background: var(--accent); border-radius: 0 0 10px 10px; animation: toastBar 30s linear forwards; }
   @keyframes toastIn { from { opacity: 0; transform: translateX(120%); } to { opacity: 1; transform: translateX(0); } }
   @keyframes toastOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(120%); } }
   @keyframes toastBar { from { width: 100%; } to { width: 0%; } }
@@ -1082,7 +1082,7 @@ function showToast(email) {
     }
   });
   container.appendChild(el);
-  setTimeout(function() { dismissToast(el); }, 5000);
+  setTimeout(function() { dismissToast(el); }, 30000);
 }
 
 function dismissToast(el) {
