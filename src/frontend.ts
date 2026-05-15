@@ -453,7 +453,8 @@ export function inboxPage(domains: DomainData[]): string {
   .email-iframe-wrap {
     border-radius: 12px; overflow: hidden;
     border: 1px solid var(--border);
-    box-shadow: 0 2px 16px rgba(0,0,0,0.18);
+    box-shadow: 0 2px 16px rgba(0,0,0,0.18), inset 0 0 0 1px rgba(255,255,255,0.03);
+    margin-top: 4px;
   }
   /* ── Email iframe ── */
   .email-iframe, iframe.email-iframe { display: block; width: 100% !important; border: 0 !important; border-radius: 0; background: #fff; min-height: 200px; overflow: hidden; outline: none; box-shadow: none; }
@@ -973,7 +974,6 @@ function loadEmailDetail(id) {
           + 'li{margin:4px 0;}'
           + 'div,span,section,article,main,header,footer{border:0!important;outline:0!important;}'
           + '::selection{background:rgba(200,149,108,0.25);}'
-          + '@media(prefers-color-scheme:dark){html,body{background:#1a1a1e!important;color:#d4cfc9!important;}a{color:#c8956c;}td,th{border-color:#2e2e34;color:#c8c4be;}th{background:#222226;}pre{background:#111113;border-color:#2e2e34;color:#c8c4be;}code{background:#222226;}table{border-color:#2e2e34;}blockquote{border-left-color:#c8956c;color:#888;}h1,h2,h3,h4,h5,h6{color:#e8e4de;}}'
           + '</style></head><body>' + cleanHtml + '</body></html>';
         body = '<div class="email-iframe-wrap"><iframe id="' + iframeId + '" class="email-iframe" sandbox="" frameborder="0" style="width:100%;border:0;box-shadow:none;display:block;min-height:400px;height:600px;overflow:auto;" srcdoc="' + srcdocContent.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"></iframe></div>';
         setTimeout(function() {}, 0);
