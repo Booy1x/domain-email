@@ -938,52 +938,46 @@ function loadEmailDetail(id) {
       var body;
       if (hasHtml) {
         var iframeId = 'email-frame-' + id;
-        body = '<iframe id="' + iframeId + '" class="email-iframe" sandbox="" scrolling="no" frameborder="0" style="width:100%;border:0;overflow:hidden;box-shadow:none;display:block;"></iframe>';
+        var cleanHtml = email.body_html
+          .replace(/<body[^>]*>/gi, '<body>')
+          .replace(/border\s*=\s*["']?\d+["']?/gi, '')
+          .replace(/frameborder\s*=\s*["']?\w+["']?/gi, '')
+          .replace(/rules\s*=\s*["']?\w+["']?/gi, '')
+          .replace(/(border[\w-]*|outline)\s*:\s*[^;"]*/gi, '')
+          .replace(/bgcolor\s*=\s*["']?[^"'\s>]*/gi, '')
+          .replace(/background(?:-color)?\s*:\s*(?:#fff(?:fff)?|rgb(?:a)?\s*\(\s*255\s*,\s*255\s*,\s*255\s*(?:,\s*[^)]*)?\s*\))\s*[;"]?/gi, '');
+        var srcdocContent = '<!DOCTYPE html><html><head><style>'
+          + 'html,body{overflow:hidden!important;margin:0!important;padding:0!important;border:0!important;outline:0!important;}'
+          + 'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:15px;line-height:1.75;color:#2d2d2d;padding:8px 16px;background:#fff;word-break:break-word;-webkit-font-smoothing:antialiased;}'
+          + 'a{color:#b07d56;text-decoration:none;border-bottom:1px solid rgba(176,125,86,0.3);transition:border-color 0.15s;}'
+          + 'a:hover{border-bottom-color:#b07d56;}'
+          + 'img{max-width:100%!important;height:auto;border-radius:6px;margin:8px 0;}'
+          + 'blockquote{border-left:3px solid #c8956c;padding:4px 16px;color:#555;margin:16px 0;background:rgba(200,149,108,0.04);border-radius:0 6px 6px 0;}'
+          + 'pre{background:#f8f6f3;border:1px solid #e8e4de;padding:16px;border-radius:8px;overflow-x:auto;font-size:13px;color:#333;font-family:"JetBrains Mono",monospace;}'
+          + 'code{background:#f0ede8;padding:2px 6px;border-radius:4px;font-size:13px;font-family:"JetBrains Mono",monospace;}'
+          + 'table{border-collapse:collapse;width:100%;margin:16px 0;border-radius:8px;overflow:hidden;border:1px solid #e8e4de;}'
+          + 'td,th{border:1px solid #e8e4de;padding:10px 14px;color:#333;}'
+          + 'th{background:#f8f6f3;font-weight:600;font-size:13px;}'
+          + 'h1,h2,h3,h4,h5,h6{color:#111;margin:20px 0 8px;line-height:1.35;}'
+          + 'h1{font-size:22px;}h2{font-size:18px;}h3{font-size:16px;}'
+          + 'p{margin:10px 0;}'
+          + 'ul,ol{padding-left:24px;margin:10px 0;}'
+          + 'li{margin:4px 0;}'
+          + 'div,span,section,article,main,header,footer{border:0!important;outline:0!important;}'
+          + '::selection{background:rgba(200,149,108,0.25);}'
+          + '</style></head><body>' + cleanHtml + '</body></html>';
+        body = '<iframe id="' + iframeId + '" class="email-iframe" sandbox="" scrolling="no" frameborder="0" style="width:100%;border:0;overflow:hidden;box-shadow:none;display:block;" srcdoc="' + srcdocContent.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"></iframe>';
         setTimeout(function() {
           var iframe = document.getElementById(iframeId);
           if (!iframe) return;
-          var doc = iframe.contentDocument || iframe.contentWindow.document;
-          // Strip border-related inline styles from the email HTML to prevent visible frames
-          var cleanHtml = email.body_html
-            .replace(/<body[^>]*>/gi, '<body>')
-            .replace(/border\s*=\s*["']?\d+["']?/gi, '')
-            .replace(/frameborder\s*=\s*["']?\w+["']?/gi, '')
-            .replace(/rules\s*=\s*["']?\w+["']?/gi, '')
-            .replace(/(border[\w-]*|outline)\s*:\s*[^;"]*/gi, '')
-            .replace(/bgcolor\s*=\s*["']?[^"'\s>]*/gi, '')
-            .replace(/background(?:-color)?\s*:\s*(?:#fff(?:fff)?|rgb(?:a)?\s*\(\s*255\s*,\s*255\s*,\s*255\s*(?:,\s*[^)]*)?\s*\))\s*[;"]?/gi, '');
-          doc.open();
-          doc.write('<!DOCTYPE html><html><head><style>'
-            + 'html,body{overflow:hidden!important;margin:0!important;padding:0!important;border:0!important;outline:0!important;}'
-            + 'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:15px;line-height:1.75;color:#2d2d2d;padding:8px 16px;background:#fff;word-break:break-word;-webkit-font-smoothing:antialiased;}'
-            + 'a{color:#b07d56;text-decoration:none;border-bottom:1px solid rgba(176,125,86,0.3);transition:border-color 0.15s;}'
-            + 'a:hover{border-bottom-color:#b07d56;}'
-            + 'img{max-width:100%!important;height:auto;border-radius:6px;margin:8px 0;}'
-            + 'blockquote{border-left:3px solid #c8956c;padding:4px 16px;color:#555;margin:16px 0;background:rgba(200,149,108,0.04);border-radius:0 6px 6px 0;}'
-            + 'pre{background:#f8f6f3;border:1px solid #e8e4de;padding:16px;border-radius:8px;overflow-x:auto;font-size:13px;color:#333;font-family:"JetBrains Mono",monospace;}'
-            + 'code{background:#f0ede8;padding:2px 6px;border-radius:4px;font-size:13px;font-family:"JetBrains Mono",monospace;}'
-            + 'table{border-collapse:collapse;width:100%;margin:16px 0;border-radius:8px;overflow:hidden;border:1px solid #e8e4de;}'
-            + 'td,th{border:1px solid #e8e4de;padding:10px 14px;color:#333;}'
-            + 'th{background:#f8f6f3;font-weight:600;font-size:13px;}'
-            + 'h1,h2,h3,h4,h5,h6{color:#111;margin:20px 0 8px;line-height:1.35;}'
-            + 'h1{font-size:22px;}h2{font-size:18px;}h3{font-size:16px;}'
-            + 'p{margin:10px 0;}'
-            + 'ul,ol{padding-left:24px;margin:10px 0;}'
-            + 'li{margin:4px 0;}'
-            + 'div,span,section,article,main,header,footer{border:0!important;outline:0!important;}'
-            + '::selection{background:rgba(200,149,108,0.25);}'
-            + '</style></head><body>' + cleanHtml + '</body></html>');
-          doc.close();
           var resize = function() {
-            try {
-              doc.documentElement.style.overflow = 'hidden';
-              doc.body.style.overflow = 'hidden';
-              iframe.style.height = doc.body.scrollHeight + 'px';
-            } catch(e) {}
+            try { iframe.style.height = iframe.contentDocument.body.scrollHeight + 'px'; } catch(e) {}
           };
-          resize();
-          var imgs = doc.querySelectorAll('img');
-          for (var i = 0; i < imgs.length; i++) { imgs[i].onload = resize; }
+          iframe.onload = function() {
+            resize();
+            var imgs = iframe.contentDocument.querySelectorAll('img');
+            for (var i = 0; i < imgs.length; i++) { imgs[i].onload = resize; }
+          };
         }, 0);
       } else if (hasText) {
         if (email.body_text.trim().startsWith('<')) {

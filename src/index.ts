@@ -7,7 +7,7 @@ import type { Env, EmailRow, AttachmentRow } from './types';
 import {
   insertEmail, insertAttachment, listEmails, listDeletedEmails, getEmail,
   getAttachments, markRead, markFlagged, deleteEmail, restoreEmail, purgeDeleted,
-  getDomains, getDomainsWithRecipients, searchEmails
+  getDomains, getDomainsWithRecipients, searchEmails, listEmailsSince
 } from './db';
 
 export function sanitizeEmailRow(email: EmailRow): EmailRow {
@@ -87,7 +87,10 @@ async function handleEmail(
 // ============================================================
 const app = new Hono<{ Bindings: Env }>();
 
-app.use('/api/*', cors({ origin: 'https://mail.525458.xyz' }));
+app.use('/api/*', async (c, next) => {
+  const origin = c.env.CORS_ORIGIN || 'https://mail.525458.xyz';
+  return cors({ origin })(c, next);
+});
 
 // Frontend page
 app.get('/', async (c) => {
@@ -118,11 +121,24 @@ app.get('/api/emails/recent', async (c) => {
 app.get('/api/emails/since', async (c) => {
   const ts = c.req.query('ts');
   if (!ts) return c.json({ error: 'missing ts param' }, 400);
-  const result = await c.env.INBOX_DB
-    .prepare('SELECT id, mail_from, subject, created_at FROM emails WHERE created_at > ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 10')
-    .bind(ts)
-    .all<{ id: string; mail_from: string; subject: string; created_at: string }>();
-  return c.json({ emails: result.results || [] });
+  const emails = await listEmailsSince(c.env.INBOX_DB, ts);
+  return c.json({ emails });
+});
+
+// List deleted emails
+app.get('/api/emails/deleted', async (c) => {
+  const result = await listDeletedEmails(c.env.INBOX_DB, { limit: 100 });
+  return c.json(result);
+});
+
+// Permanently delete all soft-deleted emails (also cleans R2)
+app.delete('/api/emails/purge', async (c) => {
+  const { emailKeys, attachmentKeys } = await purgeDeleted(c.env.INBOX_DB);
+  await Promise.all([
+    ...emailKeys.map(k => c.env.INBOX_BUCKET.delete(k)),
+    ...attachmentKeys.map(k => c.env.INBOX_BUCKET.delete(k)),
+  ]);
+  return c.json({ ok: true });
 });
 
 // List domains with recipients
@@ -171,8 +187,9 @@ app.get('/api/emails/:id/raw', async (c) => {
   if (!obj) return c.json({ error: 'raw email not found' }, 404);
   const headers = new Headers();
   obj.writeHttpMetadata(headers);
-  const safeFilename = (email.subject || 'email').replace(/["\r\n\0\\]/g, '').slice(0, 200);
-  headers.set('Content-Disposition', `attachment; filename="${safeFilename}.eml"`);
+  const safeFilename = (email.subject || 'email').replace(/[\r\n\0\\]/g, '').slice(0, 200);
+  const encodedFilename = encodeURIComponent(safeFilename + '.eml');
+  headers.set('Content-Disposition', `attachment; filename="${safeFilename}.eml"; filename*=UTF-8''${encodedFilename}`);
   return c.body(obj.body, { headers });
 });
 
@@ -198,19 +215,6 @@ app.post('/api/emails/:id/restore', async (c) => {
   await restoreEmail(c.env.INBOX_DB, id);
   return c.json({ ok: true });
 });
-
-// List deleted emails
-app.get('/api/emails/deleted', async (c) => {
-  const result = await listDeletedEmails(c.env.INBOX_DB, { limit: 100 });
-  return c.json(result);
-});
-
-// Permanently delete all soft-deleted emails
-app.delete('/api/emails/purge', async (c) => {
-  await purgeDeleted(c.env.INBOX_DB);
-  return c.json({ ok: true });
-});
-
 
 // ============================================================
 // Worker entry

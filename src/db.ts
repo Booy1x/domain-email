@@ -56,56 +56,34 @@ export async function searchEmails(
 ): Promise<{ emails: EmailListRow[]; cursor: string | null }> {
   const limit = Math.min(opts.limit || 50, 100);
   const params: unknown[] = [];
-  let query: string;
 
   // Build FTS query — support multi-word AND search
-  // Each token is matched against all indexed columns via FTS5
   const ftsQuery = (opts.q || '').trim().split(/\s+/).filter(Boolean).map(t => `"${t.replace(/"/g, '""')}"`).join(' AND ');
 
-  if (opts.domain && opts.rcptUser) {
-    // Domain + recipient filter
-    query = `
-      SELECT e.id, e.domain, e.mail_from, e.rcpt_to, e.subject, e.date, e.is_read, e.is_flagged, e.created_at
-      FROM emails_fts f
-      JOIN emails e ON e.rowid = f.rowid AND e.deleted_at IS NULL
-      WHERE emails_fts MATCH ?
-        AND e.domain = ?
-        AND SUBSTR(e.rcpt_to, 1, INSTR(e.rcpt_to, '@') - 1) = ?
-      ORDER BY e.date DESC LIMIT ?`;
-    params.push(ftsQuery, opts.domain, opts.rcptUser, limit + 1);
-  } else if (opts.domain) {
-    query = `
-      SELECT e.id, e.domain, e.mail_from, e.rcpt_to, e.subject, e.date, e.is_read, e.is_flagged, e.created_at
-      FROM emails_fts f
-      JOIN emails e ON e.rowid = f.rowid AND e.deleted_at IS NULL
-      WHERE emails_fts MATCH ? AND e.domain = ?
-      ORDER BY e.date DESC LIMIT ?`;
-    params.push(ftsQuery, opts.domain, limit + 1);
-  } else if (opts.rcptUser) {
-    query = `
-      SELECT e.id, e.domain, e.mail_from, e.rcpt_to, e.subject, e.date, e.is_read, e.is_flagged, e.created_at
-      FROM emails_fts f
-      JOIN emails e ON e.rowid = f.rowid AND e.deleted_at IS NULL
-      WHERE emails_fts MATCH ?
-        AND SUBSTR(e.rcpt_to, 1, INSTR(e.rcpt_to, '@') - 1) = ?
-      ORDER BY e.date DESC LIMIT ?`;
-    params.push(ftsQuery, opts.rcptUser, limit + 1);
-  } else {
-    // Global search
-    query = `
-      SELECT e.id, e.domain, e.mail_from, e.rcpt_to, e.subject, e.date, e.is_read, e.is_flagged, e.created_at
-      FROM emails_fts f
-      JOIN emails e ON e.rowid = f.rowid AND e.deleted_at IS NULL
-      WHERE emails_fts MATCH ?
-      ORDER BY e.date DESC LIMIT ?`;
-    params.push(ftsQuery, limit + 1);
+  const conditions: string[] = ['emails_fts MATCH ?'];
+  params.push(ftsQuery);
+
+  if (opts.domain) {
+    conditions.push('e.domain = ?');
+    params.push(opts.domain);
+  }
+  if (opts.rcptUser) {
+    conditions.push("SUBSTR(e.rcpt_to, 1, INSTR(e.rcpt_to, '@') - 1) = ?");
+    params.push(opts.rcptUser);
+  }
+  if (opts.cursor) {
+    conditions.push('e.date < ?');
+    params.push(opts.cursor);
   }
 
-  // Cursor-based pagination for FTS results
-  if (opts.cursor) {
-    query = query.replace('ORDER BY e.date DESC LIMIT ?', 'AND e.date < ? ORDER BY e.date DESC LIMIT ?');
-    params.splice(params.length - 1, 0, opts.cursor);
-  }
+  const where = conditions.join(' AND ');
+  const query = `
+    SELECT e.id, e.domain, e.mail_from, e.rcpt_to, e.subject, e.date, e.is_read, e.is_flagged, e.created_at
+    FROM emails_fts f
+    JOIN emails e ON e.rowid = f.rowid AND e.deleted_at IS NULL
+    WHERE ${where}
+    ORDER BY e.date DESC LIMIT ?`;
+  params.push(limit + 1);
 
   const result = await db.prepare(query).bind(...params).all<EmailListRow>();
   const rows = result.results || [];
@@ -159,26 +137,24 @@ export async function listEmails(
   }
 
   const limit = Math.min(opts.limit || 50, 100);
-  let query = `SELECT id, domain, mail_from, rcpt_to, subject, date, is_read, is_flagged, created_at FROM emails WHERE deleted_at IS NULL`;
+  const conditions: string[] = ['deleted_at IS NULL'];
   const params: unknown[] = [];
 
   if (opts.domain) {
-    query += ` AND domain = ?`;
+    conditions.push('domain = ?');
     params.push(opts.domain);
   }
   if (opts.rcptUser) {
-    query += ` AND SUBSTR(rcpt_to, 1, INSTR(rcpt_to, '@') - 1) = ?`;
+    conditions.push("SUBSTR(rcpt_to, 1, INSTR(rcpt_to, '@') - 1) = ?");
     params.push(opts.rcptUser);
   }
-
-  query += ` ORDER BY date DESC LIMIT ?`;
-  params.push(limit + 1);
-
-  // Use cursor-based pagination — cursor is the last seen date
   if (opts.cursor) {
-    query = query.replace('WHERE deleted_at IS NULL', 'WHERE deleted_at IS NULL AND date < ?');
-    params.unshift(opts.cursor);
+    conditions.push('date < ?');
+    params.push(opts.cursor);
   }
+
+  params.push(limit + 1);
+  const query = `SELECT id, domain, mail_from, rcpt_to, subject, date, is_read, is_flagged, created_at FROM emails WHERE ${conditions.join(' AND ')} ORDER BY date DESC LIMIT ?`;
 
   const result = await db.prepare(query).bind(...params).all<EmailListRow>();
   const rows = result.results || [];
@@ -213,8 +189,16 @@ export function restoreEmail(db: D1Database, id: string): Promise<D1Result> {
   return db.prepare(`UPDATE emails SET deleted_at = NULL WHERE id = ?`).bind(id).run();
 }
 
-export function purgeDeleted(db: D1Database): Promise<D1Result> {
-  return db.prepare(`DELETE FROM emails WHERE deleted_at IS NOT NULL`).run();
+export async function purgeDeleted(db: D1Database): Promise<{ emailKeys: string[]; attachmentKeys: string[] }> {
+  const [emailsResult, attachmentsResult] = await Promise.all([
+    db.prepare(`SELECT r2_key FROM emails WHERE deleted_at IS NOT NULL AND r2_key IS NOT NULL`).all<{ r2_key: string }>(),
+    db.prepare(`SELECT a.r2_key FROM attachments a JOIN emails e ON a.email_id = e.id WHERE e.deleted_at IS NOT NULL`).all<{ r2_key: string }>(),
+  ]);
+  await db.prepare(`DELETE FROM emails WHERE deleted_at IS NOT NULL`).run();
+  return {
+    emailKeys: (emailsResult.results || []).map(r => r.r2_key),
+    attachmentKeys: (attachmentsResult.results || []).map(r => r.r2_key),
+  };
 }
 
 export async function listDeletedEmails(
@@ -222,32 +206,31 @@ export async function listDeletedEmails(
   opts: ListEmailsOptions
 ): Promise<{ emails: EmailListRow[]; cursor: string | null }> {
   const limit = Math.min(opts.limit || 50, 100);
-  let query = `SELECT id, domain, mail_from, rcpt_to, subject, date, is_read, is_flagged, created_at FROM emails WHERE deleted_at IS NOT NULL`;
+  const conditions: string[] = ['deleted_at IS NOT NULL'];
   const params: unknown[] = [];
 
   if (opts.domain) {
-    query += ` AND domain = ?`;
+    conditions.push('domain = ?');
     params.push(opts.domain);
   }
   if (opts.q) {
-    query += ` AND (subject LIKE ? OR mail_from LIKE ? OR rcpt_to LIKE ?)`;
+    conditions.push('(subject LIKE ? OR mail_from LIKE ? OR rcpt_to LIKE ?)');
     const like = `%${opts.q}%`;
     params.push(like, like, like);
   }
-
-  query += ` ORDER BY deleted_at DESC LIMIT ?`;
-  params.push(limit + 1);
-
   if (opts.cursor) {
-    query = query.replace('WHERE deleted_at IS NOT NULL', 'WHERE deleted_at IS NOT NULL AND deleted_at < ?');
-    params.unshift(opts.cursor);
+    conditions.push('deleted_at < ?');
+    params.push(opts.cursor);
   }
 
-  const result = await db.prepare(query).bind(...params).all<EmailListRow>();
+  params.push(limit + 1);
+  const query = `SELECT id, domain, mail_from, rcpt_to, subject, date, is_read, is_flagged, created_at, deleted_at FROM emails WHERE ${conditions.join(' AND ')} ORDER BY deleted_at DESC LIMIT ?`;
+
+  const result = await db.prepare(query).bind(...params).all<EmailListRow & { deleted_at: string }>();
   const rows = result.results || [];
   const hasMore = rows.length > limit;
   const emails = hasMore ? rows.slice(0, limit) : rows;
-  const cursor = hasMore ? emails[emails.length - 1].date : null;
+  const cursor = hasMore ? emails[emails.length - 1].deleted_at : null;
 
   return { emails, cursor };
 }
@@ -298,6 +281,17 @@ export async function getDomainsWithRecipients(db: D1Database): Promise<{ domain
   };
 }
 
-export function getDomains(db: D1Database): Promise<D1Result<{ domain: string; count: number }[]>> {
+export function getDomains(db: D1Database): Promise<D1Result<{ domain: string; count: number }>> {
   return db.prepare(`SELECT domain, COUNT(*) as count FROM emails WHERE deleted_at IS NULL GROUP BY domain ORDER BY domain`).all();
+}
+
+export async function listEmailsSince(
+  db: D1Database,
+  ts: string
+): Promise<{ id: string; mail_from: string; subject: string; created_at: string }[]> {
+  const result = await db
+    .prepare('SELECT id, mail_from, subject, created_at FROM emails WHERE created_at > ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 10')
+    .bind(ts)
+    .all<{ id: string; mail_from: string; subject: string; created_at: string }>();
+  return result.results || [];
 }

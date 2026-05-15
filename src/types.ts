@@ -31,4 +31,5 @@ export interface AttachmentRow {
 export interface Env {
   INBOX_DB: D1Database;
   INBOX_BUCKET: R2Bucket;
+  CORS_ORIGIN?: string;
 }

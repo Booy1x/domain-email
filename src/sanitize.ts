@@ -5,19 +5,19 @@
 const ALLOWED_TAGS = new Set([
   'a','abbr','address','area','article','aside','audio',
   'b','bdi','bdo','blockquote','br','button','canvas','caption','cite','code','col','colgroup','data','datalist','dd','del','details','dfn','dialog','div','dl','dt',
-  'em','embed',
+  'em',
   'fieldset','figcaption','figure','footer','form',
-  'h1','h2','h3','h4','h5','h6','head','header','hgroup','hr',
-  'i','iframe','img','input','ins',
-  'kbd','label','legend','li','link',
-  'main','map','mark','menu','meta','meter',
-  'nav','noscript',
+  'h1','h2','h3','h4','h5','h6','header','hgroup','hr',
+  'i','img','input','ins',
+  'kbd','label','legend','li',
+  'main','map','mark','menu','meter',
+  'nav',
   'ol','optgroup','option','output',
-  'p','param','picture','pre','progress',
+  'p','picture','pre','progress',
   'q',
   'rp','rt','ruby',
   's','samp','section','select','slot','small','source','span','strong','sub','summary','sup',
-  'table','tbody','td','textarea','tfoot','th','thead','time','title','tr','track',
+  'table','tbody','td','textarea','tfoot','th','thead','time','tr','track',
   'u','ul',
   'var','video',
   'wbr'
@@ -78,7 +78,7 @@ function cleanAttributes(html: string): string {
     const fullTag = html.slice(tagStart, tagEnd + 1);
 
     if (fullTag.startsWith('<!--')) {
-      result.push(fullTag);
+      // Drop HTML comments — IE conditional comments can execute code
       i = tagEnd + 1;
       continue;
     }
@@ -105,10 +105,6 @@ function processTag(tag: string): string {
   const selfClose = match[3];
 
   if (!ALLOWED_TAGS.has(tagName)) {
-    return '';
-  }
-
-  if (tagName === 'iframe' || tagName === 'body' || tagName === 'html') {
     return '';
   }
 
