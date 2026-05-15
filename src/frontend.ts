@@ -42,21 +42,6 @@ export function inboxPage(domains: DomainData[]): string {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Domain Inbox</title>
-<script src="https://cdn.tailwindcss.com"><\/script>
-<script>
-  tailwind.config = {
-    darkMode: 'class',
-    theme: {
-      extend: {
-        fontFamily: {
-          sans: ['"DM Sans"', '"Noto Sans SC"', 'system-ui', 'sans-serif'],
-          serif: ['"DM Serif Display"', '"Noto Serif SC"', 'Georgia', 'serif'],
-          mono: ['"JetBrains Mono"', 'monospace']
-        }
-      }
-    }
-  }
-<\/script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@400;600&display=swap');
 
