@@ -966,19 +966,8 @@ function loadEmailDetail(id) {
           + 'div,span,section,article,main,header,footer{border:0!important;outline:0!important;}'
           + '::selection{background:rgba(200,149,108,0.25);}'
           + '</style></head><body>' + cleanHtml + '</body></html>';
-        body = '<iframe id="' + iframeId + '" class="email-iframe" sandbox="" scrolling="no" frameborder="0" style="width:100%;border:0;overflow:hidden;box-shadow:none;display:block;" srcdoc="' + srcdocContent.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"></iframe>';
-        setTimeout(function() {
-          var iframe = document.getElementById(iframeId);
-          if (!iframe) return;
-          var resize = function() {
-            try { iframe.style.height = iframe.contentDocument.body.scrollHeight + 'px'; } catch(e) {}
-          };
-          iframe.onload = function() {
-            resize();
-            var imgs = iframe.contentDocument.querySelectorAll('img');
-            for (var i = 0; i < imgs.length; i++) { imgs[i].onload = resize; }
-          };
-        }, 0);
+        body = '<iframe id="' + iframeId + '" class="email-iframe" sandbox="" frameborder="0" style="width:100%;border:0;box-shadow:none;display:block;min-height:400px;height:600px;overflow:auto;" srcdoc="' + srcdocContent.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"></iframe>';
+        setTimeout(function() {}, 0);
       } else if (hasText) {
         if (email.body_text.trim().startsWith('<')) {
           var cleanText = email.body_text
