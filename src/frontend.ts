@@ -959,8 +959,10 @@ function loadEmailDetail(id) {
           + 'li{margin:4px 0;}'
           + 'div,span,section,article,main,header,footer{border:0!important;outline:0!important;}'
           + '::selection{background:rgba(200,149,108,0.25);}'
-          + '</style><base target="_blank"></head><body>' + cleanHtml + '</body></html>';
-        body = '<div class="email-iframe-wrap"><iframe id="' + iframeId + '" class="email-iframe" sandbox="allow-top-navigation-by-user-activation allow-popups" frameborder="0" style="width:100%;border:0;box-shadow:none;display:block;min-height:400px;height:600px;overflow:auto;" srcdoc="' + srcdocContent.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"></iframe></div>';
+          + '</style><base target="_blank">'
+          + '<script>function rh(){parent.postMessage({iframeId:"' + iframeId + '",h:document.body.scrollHeight},"*")}window.addEventListener("load",rh);new MutationObserver(rh).observe(document.documentElement,{subtree:true,childList:true,attributes:true});<\/script>'
+          + '</head><body>' + cleanHtml + '</body></html>';
+        body = '<div class="email-iframe-wrap"><iframe id="' + iframeId + '" class="email-iframe" sandbox="allow-scripts allow-top-navigation-by-user-activation allow-popups" frameborder="0" style="width:100%;border:0;box-shadow:none;display:block;min-height:200px;" srcdoc="' + srcdocContent.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"></iframe></div>';
         setTimeout(function() {}, 0);
       } else if (hasText) {
         if (email.body_text.trim().startsWith('<')) {
@@ -1123,6 +1125,14 @@ loadEmails = function(reset) {
     prevLoading = state.loading;
   }, 50);
 };
+
+// Listen for iframe height reports via postMessage
+window.addEventListener('message', function(e) {
+  if (e.data && e.data.iframeId && typeof e.data.h === 'number') {
+    var iframe = document.getElementById(e.data.iframeId);
+    if (iframe) iframe.style.height = e.data.h + 'px';
+  }
+});
 
 // Start polling once DOM is ready
 setTimeout(function() {
