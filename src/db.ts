@@ -58,7 +58,7 @@ export async function searchEmails(
   const params: unknown[] = [];
 
   // Build FTS query — support multi-word AND search
-  const ftsQuery = (opts.q || '').trim().split(/\s+/).filter(Boolean).map(t => `"${t.replace(/"/g, '""')}"`).join(' AND ');
+  const ftsQuery = (opts.q || '').trim().split(/\s+/).filter(Boolean).map(t => `"${t.replace(/"/g, '""')}"*`).join(' AND ');
 
   const conditions: string[] = ['emails_fts MATCH ?'];
   params.push(ftsQuery);
