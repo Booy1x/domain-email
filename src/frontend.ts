@@ -396,13 +396,13 @@ export function inboxPage(domains: DomainData[]): string {
   .preview-empty span { font-size: 13px; font-style: italic; letter-spacing: 0.02em; }
 
   .preview-content {
-    max-width: 820px; margin: 0 auto; padding: 40px 56px 60px;
+    max-width: 820px; margin: 0 auto; padding: 24px 32px 48px;
     animation: fadeIn 0.3s cubic-bezier(0.2, 0, 0, 1);
   }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
   .preview-header {
-    margin-bottom: 32px; padding-bottom: 24px;
+    margin-bottom: 20px; padding-bottom: 16px;
     border-bottom: 1px solid var(--border);
     position: relative;
   }
@@ -413,8 +413,8 @@ export function inboxPage(domains: DomainData[]): string {
 
   .preview-subject {
     font-family: 'DM Serif Display', 'Noto Serif SC', Georgia, serif;
-    font-size: 22px; font-weight: 400; line-height: 1.35;
-    color: var(--text-1); margin-bottom: 16px;
+    font-size: 20px; font-weight: 400; line-height: 1.35;
+    color: var(--text-1); margin-bottom: 12px;
     letter-spacing: 0.01em;
   }
 
@@ -433,22 +433,30 @@ export function inboxPage(domains: DomainData[]): string {
   }
   .preview-date {
     font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500;
-    color: var(--text-3); margin-top: 10px;
+    color: var(--text-3); margin-top: 8px;
     display: inline-flex; align-items: center; gap: 6px;
     padding: 3px 10px; border-radius: 4px;
     background: var(--bg-surface); border: 1px solid var(--border);
   }
 
-  .preview-body { padding-top: 8px; }
-  .preview-body pre {
+  .preview-body { padding-top: 4px; }
+  .preview-body .plain-text {
     font-family: 'DM Sans', 'Noto Sans SC', sans-serif;
     font-size: 14.5px; line-height: 1.8; color: var(--text-2);
     white-space: pre-wrap; word-break: break-word;
     letter-spacing: 0.01em;
+    padding: 20px 24px; border-radius: 10px;
+    background: var(--bg-surface); border: 1px solid var(--border);
   }
 
+  /* ── Email iframe wrapper ── */
+  .email-iframe-wrap {
+    border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 16px rgba(0,0,0,0.18);
+  }
   /* ── Email iframe ── */
-  .email-iframe, iframe.email-iframe { display: block; width: 100% !important; border: 0 !important; border-radius: var(--radius); background: #fff; min-height: 200px; overflow: hidden; outline: none; box-shadow: none; }
+  .email-iframe, iframe.email-iframe { display: block; width: 100% !important; border: 0 !important; border-radius: 0; background: #fff; min-height: 200px; overflow: hidden; outline: none; box-shadow: none; }
 
   /* ── Breadcrumb ── */
   .breadcrumb-bar {
@@ -965,8 +973,9 @@ function loadEmailDetail(id) {
           + 'li{margin:4px 0;}'
           + 'div,span,section,article,main,header,footer{border:0!important;outline:0!important;}'
           + '::selection{background:rgba(200,149,108,0.25);}'
+          + '@media(prefers-color-scheme:dark){html,body{background:#1a1a1e!important;color:#d4cfc9!important;}a{color:#c8956c;}td,th{border-color:#2e2e34;color:#c8c4be;}th{background:#222226;}pre{background:#111113;border-color:#2e2e34;color:#c8c4be;}code{background:#222226;}table{border-color:#2e2e34;}blockquote{border-left-color:#c8956c;color:#888;}h1,h2,h3,h4,h5,h6{color:#e8e4de;}}'
           + '</style></head><body>' + cleanHtml + '</body></html>';
-        body = '<iframe id="' + iframeId + '" class="email-iframe" sandbox="" frameborder="0" style="width:100%;border:0;box-shadow:none;display:block;min-height:400px;height:600px;overflow:auto;" srcdoc="' + srcdocContent.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"></iframe>';
+        body = '<div class="email-iframe-wrap"><iframe id="' + iframeId + '" class="email-iframe" sandbox="" frameborder="0" style="width:100%;border:0;box-shadow:none;display:block;min-height:400px;height:600px;overflow:auto;" srcdoc="' + srcdocContent.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"></iframe></div>';
         setTimeout(function() {}, 0);
       } else if (hasText) {
         if (email.body_text.trim().startsWith('<')) {
@@ -978,9 +987,9 @@ function loadEmailDetail(id) {
             .replace(/(border[\w-]*|outline)\s*:\s*[^;"]*/gi, '')
             .replace(/bgcolor\s*=\s*["']?[^"'\s>]*/gi, '')
             .replace(/background(?:-color)?\s*:\s*(?:#fff(?:fff)?|rgb(?:a)?\s*\(\s*255\s*,\s*255\s*,\s*255\s*(?:,\s*[^)]*)?\s*\))\s*[;"]?/gi, '');
-          body = '<iframe class="email-iframe" sandbox="" scrolling="no" style="width:100%;border:none;overflow:hidden;" srcdoc="' + esc(cleanText.replace(/"/g, '&quot;')) + '"></iframe>';
+          body = '<div class="email-iframe-wrap"><iframe class="email-iframe" sandbox="" scrolling="no" style="width:100%;border:none;overflow:hidden;" srcdoc="' + esc(cleanText.replace(/"/g, '&quot;')) + '"></iframe></div>';
         } else {
-          body = '<pre class="preview-body" style="background:var(--bg-surface);border:1px solid var(--border);padding:24px;border-radius:10px;">' + esc(email.body_text) + '</pre>';
+          body = '<div class="plain-text">' + esc(email.body_text) + '</div>';
         }
       } else {
         body = '<div class="email-list-empty">此邮件没有正文内容</div>';
