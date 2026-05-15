@@ -975,7 +975,7 @@ function loadEmailDetail(id) {
           + 'div,span,section,article,main,header,footer{border:0!important;outline:0!important;}'
           + '::selection{background:rgba(200,149,108,0.25);}'
           + '</style><base target="_blank"></head><body>' + cleanHtml + '</body></html>';
-        body = '<div class="email-iframe-wrap"><iframe id="' + iframeId + '" class="email-iframe" sandbox="allow-top-navigation-by-user-activation" frameborder="0" style="width:100%;border:0;box-shadow:none;display:block;min-height:400px;height:600px;overflow:auto;" srcdoc="' + srcdocContent.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"></iframe></div>';
+        body = '<div class="email-iframe-wrap"><iframe id="' + iframeId + '" class="email-iframe" sandbox="allow-top-navigation-by-user-activation allow-popups" frameborder="0" style="width:100%;border:0;box-shadow:none;display:block;min-height:400px;height:600px;overflow:auto;" srcdoc="' + srcdocContent.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"></iframe></div>';
         setTimeout(function() {}, 0);
       } else if (hasText) {
         if (email.body_text.trim().startsWith('<')) {
@@ -987,7 +987,7 @@ function loadEmailDetail(id) {
             .replace(/(border[\w-]*|outline)\s*:\s*[^;"]*/gi, '')
             .replace(/bgcolor\s*=\s*["']?[^"'\s>]*/gi, '')
             .replace(/background(?:-color)?\s*:\s*(?:#fff(?:fff)?|rgb(?:a)?\s*\(\s*255\s*,\s*255\s*,\s*255\s*(?:,\s*[^)]*)?\s*\))\s*[;"]?/gi, '');
-          body = '<div class="email-iframe-wrap"><iframe class="email-iframe" sandbox="allow-top-navigation-by-user-activation" scrolling="no" style="width:100%;border:none;overflow:hidden;" srcdoc="' + esc(cleanText.replace(/"/g, '&quot;')) + '"></iframe></div>';
+          body = '<div class="email-iframe-wrap"><iframe class="email-iframe" sandbox="allow-top-navigation-by-user-activation allow-popups" scrolling="no" style="width:100%;border:none;overflow:hidden;" srcdoc="' + esc(cleanText.replace(/"/g, '&quot;')) + '"></iframe></div>';
         } else {
           body = '<div class="plain-text">' + esc(email.body_text) + '</div>';
         }
