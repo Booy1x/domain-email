@@ -960,7 +960,7 @@ function loadEmailDetail(id) {
           + 'div,span,section,article,main,header,footer{border:0!important;outline:0!important;}'
           + '::selection{background:rgba(200,149,108,0.25);}'
           + '</style><base target="_blank">'
-          + '<script>function rh(){parent.postMessage({iframeId:"' + iframeId + '",h:document.body.scrollHeight},"*")}window.addEventListener("load",rh);new MutationObserver(rh).observe(document.documentElement,{subtree:true,childList:true,attributes:true});<\/script>'
+          + '<script>function rh(){parent.postMessage({iframeId:\'' + iframeId + '\',h:document.body.scrollHeight},\'*\')}window.addEventListener(\'load\',rh);new MutationObserver(rh).observe(document.documentElement,{subtree:true,childList:true,attributes:true});<\/script>'
           + '</head><body>' + cleanHtml + '</body></html>';
         body = '<div class="email-iframe-wrap"><iframe id="' + iframeId + '" class="email-iframe" sandbox="allow-scripts allow-top-navigation-by-user-activation allow-popups" frameborder="0" style="width:100%;border:0;box-shadow:none;display:block;min-height:200px;" srcdoc="' + srcdocContent.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"></iframe></div>';
         setTimeout(function() {}, 0);
