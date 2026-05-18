@@ -555,6 +555,27 @@ var state = {
 };
 var allDomains = []; // cached from /api/domains
 
+// Wrap fetch to handle Cloudflare Access auth issues
+var originalFetch = window.fetch;
+window.fetch = function(url, opts) {
+  opts = opts || {};
+  opts.credentials = 'same-origin';
+  return originalFetch.call(window, url, opts).then(function(r) {
+    // Cloudflare Access returns redirect or HTML login page when session expires
+    if (r.redirected || (r.status === 403 || r.status === 401)) {
+      window.location.reload();
+      return Promise.reject(new Error('Auth session expired'));
+    }
+    // Check if response is HTML (Access login page) instead of JSON
+    var ct = r.headers.get('content-type') || '';
+    if (url.toString().indexOf('/api/') !== -1 && ct.indexOf('text/html') !== -1) {
+      window.location.reload();
+      return Promise.reject(new Error('Auth session expired'));
+    }
+    return r;
+  });
+};
+
 // Theme toggle
 var currentTheme = localStorage.getItem('theme') || 'dark';
 function applyTheme(t) {
