@@ -11,9 +11,29 @@ import {
 } from './db';
 
 export function sanitizeEmailRow(email: EmailRow): EmailRow {
+  let bodyHtml = email.body_html || '';
+  // Skip sanitization for very large HTML to avoid CPU timeout in Workers
+  // (sanitizeHtml uses regex which can be expensive on large inputs)
+  if (bodyHtml.length > 512_000) {
+    bodyHtml = ''; // too large, strip it — user can download raw .eml
+  } else if (bodyHtml.length > 0) {
+    try {
+      bodyHtml = sanitizeHtml(bodyHtml);
+    } catch {
+      bodyHtml = '';
+    }
+  }
+
+  // Fix invalid date values already stored in DB
+  let date = email.date || '';
+  if (date && isNaN(new Date(date).getTime())) {
+    date = email.created_at || new Date().toISOString();
+  }
+
   return {
     ...email,
-    body_html: sanitizeHtml(email.body_html || ''),
+    date,
+    body_html: bodyHtml,
     subject: escapeHtml(email.subject || ''),
     mail_from: escapeHtml(email.mail_from || ''),
     rcpt_to: escapeHtml(email.rcpt_to || ''),
@@ -43,6 +63,10 @@ async function handleEmail(
   await env.INBOX_BUCKET.put(rawKey, rawBuffer);
 
   // Insert email metadata into D1
+  const emailDate = parsed.date && !isNaN(parsed.date.getTime())
+    ? parsed.date.toISOString()
+    : new Date().toISOString();
+
   const emailRow: EmailRow = {
     id: emailId,
     domain,
@@ -51,7 +75,7 @@ async function handleEmail(
     subject: parsed.subject || '',
     body_text: parsed.bodyText || '',
     body_html: parsed.bodyHtml || '',
-    date: parsed.date.toISOString(),
+    date: emailDate,
     r2_key: rawKey,
     is_read: 0,
     is_flagged: 0,
