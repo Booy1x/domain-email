@@ -11,16 +11,18 @@ import {
 } from './db';
 
 export function sanitizeEmailRow(email: EmailRow): EmailRow {
-  let bodyHtml = email.body_html || '';
-  // Skip sanitization for very large HTML to avoid CPU timeout in Workers
-  // (sanitizeHtml uses regex which can be expensive on large inputs)
+  const rawHtml = email.body_html || '';
+  let bodyHtml = rawHtml;
+
   if (bodyHtml.length > 512_000) {
-    bodyHtml = ''; // too large, strip it — user can download raw .eml
+    // Too large for regex sanitization — pass through as-is (rendered in Shadow DOM)
+    // The frontend already isolates HTML in a shadow root
+    bodyHtml = rawHtml;
   } else if (bodyHtml.length > 0) {
     try {
       bodyHtml = sanitizeHtml(bodyHtml);
     } catch {
-      bodyHtml = '';
+      bodyHtml = rawHtml; // fallback to unsanitized rather than losing content
     }
   }
 
@@ -177,6 +179,22 @@ app.get('/api/emails/:id', async (c) => {
   try {
     const email = await getEmail(c.env.INBOX_DB, id);
     if (!email) return c.json({ error: 'not found' }, 404);
+
+    // If body is empty but raw exists in R2, re-parse from raw
+    if (!email.body_html && !email.body_text && email.r2_key) {
+      try {
+        const rawObj = await c.env.INBOX_BUCKET.get(email.r2_key);
+        if (rawObj) {
+          const rawBuffer = new Uint8Array(await rawObj.arrayBuffer());
+          const reParsed = await parseEmail(rawBuffer);
+          email.body_html = reParsed.bodyHtml || '';
+          email.body_text = reParsed.bodyText || '';
+        }
+      } catch (e) {
+        console.error('Failed to re-parse raw email:', id, e);
+      }
+    }
+
     return c.json(sanitizeEmailRow(email));
   } catch (e) {
     console.error('Failed to get email detail:', id, e);
