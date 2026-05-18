@@ -13,10 +13,10 @@ import {
 export function sanitizeEmailRow(email: EmailRow): EmailRow {
   return {
     ...email,
-    body_html: sanitizeHtml(email.body_html),
-    subject: escapeHtml(email.subject),
-    mail_from: escapeHtml(email.mail_from),
-    rcpt_to: escapeHtml(email.rcpt_to),
+    body_html: sanitizeHtml(email.body_html || ''),
+    subject: escapeHtml(email.subject || ''),
+    mail_from: escapeHtml(email.mail_from || ''),
+    rcpt_to: escapeHtml(email.rcpt_to || ''),
   };
 }
 
@@ -46,11 +46,11 @@ async function handleEmail(
   const emailRow: EmailRow = {
     id: emailId,
     domain,
-    mail_from: parsed.from,
-    rcpt_to: message.to,
-    subject: parsed.subject,
-    body_text: parsed.bodyText,
-    body_html: parsed.bodyHtml,
+    mail_from: parsed.from || '',
+    rcpt_to: message.to || '',
+    subject: parsed.subject || '',
+    body_text: parsed.bodyText || '',
+    body_html: parsed.bodyHtml || '',
     date: parsed.date.toISOString(),
     r2_key: rawKey,
     is_read: 0,
@@ -150,9 +150,14 @@ app.get('/api/domains', async (c) => {
 // Get email detail
 app.get('/api/emails/:id', async (c) => {
   const id = c.req.param('id');
-  const email = await getEmail(c.env.INBOX_DB, id);
-  if (!email) return c.json({ error: 'not found' }, 404);
-  return c.json(sanitizeEmailRow(email));
+  try {
+    const email = await getEmail(c.env.INBOX_DB, id);
+    if (!email) return c.json({ error: 'not found' }, 404);
+    return c.json(sanitizeEmailRow(email));
+  } catch (e) {
+    console.error('Failed to get email detail:', id, e);
+    return c.json({ error: 'internal error' }, 500);
+  }
 });
 
 // Get email attachments
