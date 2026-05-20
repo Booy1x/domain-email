@@ -734,7 +734,7 @@ function loadHomeEmails() {
   if (state.loading) return;
   state.loading = true;
   document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
-  fetch('/api/emails/recent?limit=5')
+  fetch('/api/emails/recent?limit=10')
     .then(function(r) { return r.json(); })
     .then(function(data) {
       state.emails = data.emails || [];
