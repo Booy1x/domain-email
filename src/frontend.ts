@@ -443,6 +443,12 @@ export function inboxPage(domains: DomainData[]): string {
   .email-iframe-card {
     position: relative;
     display: block;
+    /* Hold a sensible paper size while the iframe is still measuring its
+       own content. Without this the iframe collapses to its UA default
+       (~80–150px) for the brief moment before the load event fires, which
+       reads as the email "popping open" twice. The card stays at this min
+       until the iframe reports a larger scrollHeight. */
+    min-height: 240px;
     background: #fdfaf4;
     border-radius: 12px;
     overflow: hidden;
@@ -451,6 +457,27 @@ export function inboxPage(domains: DomainData[]): string {
       0 8px 24px -12px rgba(0, 0, 0, 0.4),
       0 0 0 1px rgba(200, 149, 108, 0.05);
     transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  }
+  /* Subtle "paper is settling" shimmer shown only while iframe is hidden.
+     Once the iframe fades in (.ready) the indicator is covered, so we can
+     leave it in DOM without a visual conflict. */
+  .email-iframe-card::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 22px; height: 22px;
+    margin: -11px 0 0 -11px;
+    border-radius: 50%;
+    border: 2px solid rgba(138, 99, 64, 0.18);
+    border-top-color: rgba(138, 99, 64, 0.55);
+    animation: spin 0.9s linear infinite;
+    opacity: 1;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .email-iframe-card.iframe-ready::after {
+    opacity: 0;
   }
   .email-iframe-card::before {
     content: '';
@@ -477,8 +504,18 @@ export function inboxPage(domains: DomainData[]): string {
     width: 100%;
     border: 0;
     background: transparent;
-    min-height: 80px;
-    /* height set dynamically via JS */
+    /* Hidden until we have measured the real scrollHeight. Avoids the
+       "small box for ~1s, then expands" flash that comes from the iframe
+       UA default height. The card's ::after spinner is visible during
+       this window. */
+    opacity: 0;
+    transition: opacity 0.18s ease;
+    position: relative;
+    z-index: 1;
+    /* height set dynamically via JS once the load event fires */
+  }
+  .email-iframe.ready {
+    opacity: 1;
   }
 
   /* ── Breadcrumb ── */
@@ -1098,6 +1135,11 @@ function mountEmailIframe(cardId, srcdoc) {
         iframe.style.height = (h + 2) + 'px';
       };
       resize();
+      // First measure done — reveal the iframe and hide the spinner. The
+      // fade-in masks any tiny height adjustment that happens immediately
+      // after as fonts / images finish loading.
+      iframe.classList.add('ready');
+      card.classList.add('iframe-ready');
       if (typeof ResizeObserver !== 'undefined') {
         var ro = new ResizeObserver(resize);
         ro.observe(doc.documentElement);
