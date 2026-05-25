@@ -435,7 +435,18 @@ export function inboxPage(domains: DomainData[]): string {
   }
 
   /* ── Email shadow host ── */
-  .email-shadow-host { display: block; padding: 8px 0; }
+  /* Render HTML emails on a white "paper" card so the email's own colors
+     (designed for white backgrounds) keep their contrast in dark mode. */
+  .email-shadow-host {
+    display: block;
+    background: #ffffff;
+    color: #2d2d2d;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    padding: 28px 32px;
+    overflow-x: auto;
+  }
+  .light .email-shadow-host { box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
 
   /* ── Breadcrumb ── */
   .breadcrumb-bar {
@@ -953,19 +964,22 @@ function loadEmailDetail(id) {
           var shadow = host.attachShadow({ mode: 'open' });
           var style = document.createElement('style');
           style.textContent = [
+            ':host{display:block;background:#ffffff;color:#2d2d2d;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:15px;line-height:1.75;word-break:break-word;}',
+            ':host>div{max-width:100%;}',
             'a{color:#b07d56;text-decoration:none;border-bottom:1px solid rgba(176,125,86,0.3);}',
             'a:hover{border-bottom-color:#b07d56;}',
             'img{max-width:100%!important;height:auto;border-radius:6px;margin:8px 0;}',
             'blockquote{border-left:3px solid #c8956c;padding:4px 16px;color:#555;margin:16px 0;background:rgba(200,149,108,0.04);border-radius:0 6px 6px 0;}',
-            'pre{background:#f8f6f3;border:1px solid #e8e4de;padding:16px;border-radius:8px;overflow-x:auto;font-size:13px;color:#333;}',
-            'code{background:#f0ede8;padding:2px 6px;border-radius:4px;font-size:13px;}',
-            'table{border-collapse:collapse;width:100%;margin:16px 0;border:1px solid #e8e4de;}',
+            'pre{background:#f8f6f3;border:1px solid #e8e4de;padding:16px;border-radius:8px;overflow-x:auto;font-size:13px;color:#333;white-space:pre-wrap;word-break:break-word;}',
+            'code{background:#f0ede8;padding:2px 6px;border-radius:4px;font-size:13px;color:#333;}',
+            'table{border-collapse:collapse;max-width:100%;margin:16px 0;border:1px solid #e8e4de;}',
             'td,th{border:1px solid #e8e4de;padding:10px 14px;color:#333;}',
             'th{background:#f8f6f3;font-weight:600;font-size:13px;}',
             'h1,h2,h3,h4,h5,h6{color:#111;margin:20px 0 8px;line-height:1.35;}',
+            'h1:first-child,h2:first-child,h3:first-child,h4:first-child,h5:first-child,h6:first-child{margin-top:0;}',
             'h1{font-size:22px;}h2{font-size:18px;}h3{font-size:16px;}',
-            'p{margin:10px 0;}ul,ol{padding-left:24px;margin:10px 0;}li{margin:4px 0;}',
-            ':host{display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:15px;line-height:1.75;color:#2d2d2d;word-break:break-word;}'
+            'p{margin:10px 0;}p:first-child{margin-top:0;}p:last-child{margin-bottom:0;}',
+            'ul,ol{padding-left:24px;margin:10px 0;}li{margin:4px 0;}'
           ].join('');
           var div = document.createElement('div');
           div.innerHTML = email.body_html;
