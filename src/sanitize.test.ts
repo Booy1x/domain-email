@@ -89,8 +89,14 @@ describe('sanitizeHtml — XSS Protection', () => {
     expect(sanitize('<base href="https://evil.com/">')).toBe('');
   });
 
-  it('removes <head> sections', () => {
-    expect(sanitize('<head><style>body{display:none}</style></head><p>hi</p>')).toBe('<p>hi</p>');
+  it('removes <head> wrapper but preserves <style> blocks within it', () => {
+    // Marketing emails ship CSS in <head>. The <head> element itself is
+    // dropped (it can host base / meta / link attacks) but the inner
+    // <style> rules survive so the email keeps its design.
+    const out = sanitize('<head><style>.btn{color:red}</style></head><p class="btn">hi</p>');
+    expect(out).toContain('<style>.btn{color:red}</style>');
+    expect(out).toContain('<p class="btn">hi</p>');
+    expect(out).not.toContain('<head>');
   });
 
   it('removes iframes', () => {
@@ -111,12 +117,37 @@ describe('sanitizeHtml — XSS Protection', () => {
   });
 
   // ── CSS-based attacks ──
-  it('removes style with expression()', () => {
+  it('removes inline style with expression()', () => {
     expect(sanitize('<div style="width: expression(alert(1))">x</div>')).toBe('<div>x</div>');
   });
 
-  it('removes style with -moz-binding', () => {
+  it('removes inline style with -moz-binding', () => {
     expect(sanitize('<div style="-moz-binding: url(evil.xml)">x</div>')).toBe('<div>x</div>');
+  });
+
+  it('neutralizes expression() inside <style> blocks', () => {
+    const out = sanitize('<style>.x{width:expression(alert(1))}</style>');
+    // Original keyword no longer present as an active declaration; the
+    // prefixed form is harmless because no browser recognizes it.
+    expect(out).not.toMatch(/(?<![a-z-])expression\s*\(/i);
+    expect(out).toContain('invalid-expression(');
+  });
+
+  it('neutralizes -moz-binding inside <style> blocks', () => {
+    const out = sanitize('<style>.x{-moz-binding:url(evil.xml)}</style>');
+    expect(out).not.toMatch(/(?<![a-z])-moz-binding\s*:/i);
+    expect(out).toContain('invalid-moz-binding:');
+  });
+
+  it('neutralizes url(javascript:) inside <style> blocks', () => {
+    const out = sanitize('<style>.x{background:url(javascript:alert(1))}</style>');
+    expect(out).not.toMatch(/url\s*\(\s*["']?javascript:/i);
+  });
+
+  it('neutralizes behavior: inside <style> blocks', () => {
+    const out = sanitize('<style>.x{behavior:url(htc.htc)}</style>');
+    expect(out).not.toMatch(/(?<![a-z-])behavior\s*:/i);
+    expect(out).toContain('invalid-behavior:');
   });
 
   it('removes position:fixed in style (overlay attack)', () => {
@@ -147,6 +178,27 @@ describe('sanitizeHtml — XSS Protection', () => {
   it('preserves safe style attributes', () => {
     const input = '<p style="color: red;">red text</p>';
     expect(sanitize(input)).toBe(input);
+  });
+
+  it('preserves <style> blocks in body', () => {
+    const input = '<style>.btn{color:#fff;background:#0a66c2}</style><a class="btn">click</a>';
+    const out = sanitize(input);
+    expect(out).toContain('<style>.btn{color:#fff;background:#0a66c2}</style>');
+    expect(out).toContain('<a class="btn">click</a>');
+  });
+
+  it('preserves <font> color and face attributes', () => {
+    // <font> is deprecated but still common in legacy transactional emails
+    // (banks, airlines). Stripping it makes those emails look like wireframes.
+    const out = sanitize('<font color="#cc0000" face="Arial">important</font>');
+    expect(out).toContain('<font');
+    expect(out).toContain('color="#cc0000"');
+    expect(out).toContain('face="Arial"');
+    expect(out).toContain('important');
+  });
+
+  it('preserves <center> wrapper', () => {
+    expect(sanitize('<center><p>centered</p></center>')).toBe('<center><p>centered</p></center>');
   });
 
   it('preserves tables', () => {

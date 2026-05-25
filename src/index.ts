@@ -14,9 +14,10 @@ export function sanitizeEmailRow(email: EmailRow): EmailRow {
   const rawHtml = email.body_html || '';
   let bodyHtml = rawHtml;
 
-  if (bodyHtml.length > 512_000) {
-    // Too large for regex sanitization — pass through as-is (rendered in Shadow DOM)
-    // The frontend already isolates HTML in a shadow root
+  if (bodyHtml.length > 2_000_000) {
+    // Pathologically large body. Skip the regex-based sanitizer to avoid
+    // burning Worker CPU on what is almost certainly junk. The frontend
+    // sandbox iframe + CSP still neutralize scripts in the rendered HTML.
     bodyHtml = rawHtml;
   } else if (bodyHtml.length > 0) {
     try {
