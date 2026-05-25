@@ -434,14 +434,15 @@ export function inboxPage(domains: DomainData[]): string {
     padding-top: 4px;
     flex: 1 1 auto;
     display: flex; flex-direction: column;
+    min-height: 0;
   }
   .preview-body .plain-text {
     font-family: 'DM Sans', 'Noto Sans SC', sans-serif;
     font-size: 14.5px; line-height: 1.8; color: var(--text-2);
     white-space: pre-wrap; word-break: break-word;
     letter-spacing: 0.01em;
-    padding: 20px 24px; border-radius: 10px;
-    background: var(--bg-surface); border: 1px solid var(--border);
+    padding: 4px 0 0; border-radius: 0;
+    background: transparent; border: 0;
   }
 
   /* ── HTML email "paper card" ── */
@@ -461,13 +462,11 @@ export function inboxPage(domains: DomainData[]): string {
        until the iframe reports a larger scrollHeight. */
     min-height: 240px;
     flex: 1 1 auto;
-    background: #fdfaf4;
-    border-radius: 12px;
+    background: transparent;
+    border-radius: 0;
     overflow: hidden;
-    border: 1px solid var(--border);
-    box-shadow:
-      0 8px 24px -12px rgba(0, 0, 0, 0.4),
-      0 0 0 1px rgba(200, 149, 108, 0.05);
+    border: 0;
+    box-shadow: none;
     transition: box-shadow 0.3s ease, border-color 0.3s ease;
   }
   /* Subtle "paper is settling" shimmer shown only while iframe is hidden.
@@ -496,26 +495,25 @@ export function inboxPage(domains: DomainData[]): string {
     position: absolute;
     top: 0; left: 0;
     width: 44px; height: 44px;
-    background: linear-gradient(135deg, rgba(200, 149, 108, 0.18) 0%, transparent 65%);
+    background: transparent;
     pointer-events: none;
     border-radius: 12px 0 0 0;
     z-index: 1;
   }
   .light .email-iframe-card {
-    background: #ffffff;
-    border-color: rgba(0, 0, 0, 0.06);
-    box-shadow:
-      0 1px 2px rgba(0, 0, 0, 0.03),
-      0 4px 16px -8px rgba(0, 0, 0, 0.06);
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
   }
   .light .email-iframe-card::before {
-    background: linear-gradient(135deg, rgba(176, 125, 86, 0.12) 0%, transparent 65%);
+    background: transparent;
   }
   .email-iframe {
     display: block;
     width: 100%;
     border: 0;
     background: transparent;
+    overflow: hidden;
     /* Hidden until we have measured the real scrollHeight. Avoids the
        "small box for ~1s, then expands" flash that comes from the iframe
        UA default height. The card's ::after spinner is visible during
@@ -1092,7 +1090,7 @@ function esc(s) { var d = document.createElement('div'); d.textContent = s; retu
 // inside the surrounding interface.
 function buildEmailSrcdoc(rawHtml) {
   var css = [
-    'html,body{margin:0;padding:0;background:#fdfaf4;color:#2b2a27;}',
+    'html,body{margin:0;padding:0;background:#fdfaf4;color:#2b2a27;overflow:hidden;}',
     'body{padding:32px 36px;font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue","Noto Sans SC","PingFang SC",sans-serif;word-break:break-word;}',
     'img{max-width:100%;height:auto;border-radius:4px;}',
     'pre{overflow-x:auto;padding:14px 16px;background:#f5f1ea;border:1px solid #e9e2d5;border-radius:6px;font:13px/1.55 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;white-space:pre-wrap;word-break:break-word;}',
@@ -1143,6 +1141,7 @@ function mountEmailIframe(cardId, srcdoc) {
     // scripts are still disabled). allow-popups so links can open new tabs.
     iframe.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox allow-same-origin');
     iframe.setAttribute('referrerpolicy', 'no-referrer');
+    iframe.setAttribute('scrolling', 'no');
     iframe.srcdoc = srcdoc;
 
     var revealed = false;
