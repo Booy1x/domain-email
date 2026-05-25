@@ -1159,6 +1159,7 @@ function mountEmailIframe(cardId, srcdoc) {
       revealed = true;
     };
     var wired = false;
+    var wired = false;
     var wireDoc = function() {
       if (wired) return;
       var doc = iframe.contentDocument;
