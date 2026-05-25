@@ -434,19 +434,52 @@ export function inboxPage(domains: DomainData[]): string {
     background: var(--bg-surface); border: 1px solid var(--border);
   }
 
-  /* ── Email shadow host ── */
-  /* Render HTML emails on a white "paper" card so the email's own colors
-     (designed for white backgrounds) keep their contrast in dark mode. */
-  .email-shadow-host {
+  /* ── HTML email "paper card" ── */
+  /* Sandboxed iframe hosts the email body in true isolation (no JS, no
+     cross-origin reads, blocked remote scripts). The wrapper gives it the
+     look of a warm cream sheet of letter paper with a soft amber-tinted
+     shadow, so it reads as intentional letterhead in dark mode rather than
+     a stark white slab. */
+  .email-iframe-card {
+    position: relative;
     display: block;
-    background: #ffffff;
-    color: #2d2d2d;
-    border-radius: 10px;
+    background: #fdfaf4;
+    border-radius: 12px;
+    overflow: hidden;
     border: 1px solid var(--border);
-    padding: 28px 32px;
-    overflow-x: auto;
+    box-shadow:
+      0 8px 24px -12px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(200, 149, 108, 0.05);
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
   }
-  .light .email-shadow-host { box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+  .email-iframe-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 44px; height: 44px;
+    background: linear-gradient(135deg, rgba(200, 149, 108, 0.18) 0%, transparent 65%);
+    pointer-events: none;
+    border-radius: 12px 0 0 0;
+    z-index: 1;
+  }
+  .light .email-iframe-card {
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.06);
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.03),
+      0 4px 16px -8px rgba(0, 0, 0, 0.06);
+  }
+  .light .email-iframe-card::before {
+    background: linear-gradient(135deg, rgba(176, 125, 86, 0.12) 0%, transparent 65%);
+  }
+  .email-iframe {
+    display: block;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    min-height: 80px;
+    /* height set dynamically via JS */
+  }
 
   /* ── Breadcrumb ── */
   .breadcrumb-bar {
@@ -954,54 +987,17 @@ function loadEmailDetail(id) {
     .then(function(email) {
       var hasHtml = email.body_html && email.body_html.length > 0;
       var hasText = email.body_text && email.body_text.length > 0;
+      var isHtmlText = hasText && email.body_text.trim().charAt(0) === '<';
       var body;
-      if (hasHtml) {
-        var shadowId = 'email-shadow-' + id;
-        body = '<div id="' + shadowId + '" class="email-shadow-host"></div>';
-        setTimeout(function() {
-          var host = document.getElementById(shadowId);
-          if (!host) return;
-          var shadow = host.attachShadow({ mode: 'open' });
-          var style = document.createElement('style');
-          style.textContent = [
-            ':host{display:block;background:#ffffff;color:#2d2d2d;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:15px;line-height:1.75;word-break:break-word;}',
-            ':host>div{max-width:100%;}',
-            'a{color:#b07d56;text-decoration:none;border-bottom:1px solid rgba(176,125,86,0.3);}',
-            'a:hover{border-bottom-color:#b07d56;}',
-            'img{max-width:100%!important;height:auto;border-radius:6px;margin:8px 0;}',
-            'blockquote{border-left:3px solid #c8956c;padding:4px 16px;color:#555;margin:16px 0;background:rgba(200,149,108,0.04);border-radius:0 6px 6px 0;}',
-            'pre{background:#f8f6f3;border:1px solid #e8e4de;padding:16px;border-radius:8px;overflow-x:auto;font-size:13px;color:#333;white-space:pre-wrap;word-break:break-word;}',
-            'code{background:#f0ede8;padding:2px 6px;border-radius:4px;font-size:13px;color:#333;}',
-            'table{border-collapse:collapse;max-width:100%;margin:16px 0;border:1px solid #e8e4de;}',
-            'td,th{border:1px solid #e8e4de;padding:10px 14px;color:#333;}',
-            'th{background:#f8f6f3;font-weight:600;font-size:13px;}',
-            'h1,h2,h3,h4,h5,h6{color:#111;margin:20px 0 8px;line-height:1.35;}',
-            'h1:first-child,h2:first-child,h3:first-child,h4:first-child,h5:first-child,h6:first-child{margin-top:0;}',
-            'h1{font-size:22px;}h2{font-size:18px;}h3{font-size:16px;}',
-            'p{margin:10px 0;}p:first-child{margin-top:0;}p:last-child{margin-bottom:0;}',
-            'ul,ol{padding-left:24px;margin:10px 0;}li{margin:4px 0;}'
-          ].join('');
-          var div = document.createElement('div');
-          div.innerHTML = email.body_html;
-          // Make all links open in new tab
-          div.querySelectorAll('a').forEach(function(a) { a.target = '_blank'; a.rel = 'noopener'; });
-          shadow.appendChild(style);
-          shadow.appendChild(div);
-        }, 0);
+      var iframeCardId = null;
+      var iframeSrcdoc = null;
+
+      if (hasHtml || isHtmlText) {
+        iframeCardId = 'email-card-' + id;
+        body = '<div class="email-iframe-card" id="' + iframeCardId + '"></div>';
+        iframeSrcdoc = buildEmailSrcdoc(hasHtml ? email.body_html : email.body_text);
       } else if (hasText) {
-        if (email.body_text.trim().startsWith('<')) {
-          var cleanText = email.body_text
-            .replace(/<body[^>]*>/gi, '<body>')
-            .replace(/border\s*=\s*["']?\d+["']?/gi, '')
-            .replace(/frameborder\s*=\s*["']?\w+["']?/gi, '')
-            .replace(/rules\s*=\s*["']?\w+["']?/gi, '')
-            .replace(/(border[\w-]*|outline)\s*:\s*[^;"]*/gi, '')
-            .replace(/bgcolor\s*=\s*["']?[^"'\s>]*/gi, '')
-            .replace(/background(?:-color)?\s*:\s*(?:#fff(?:fff)?|rgb(?:a)?\s*\(\s*255\s*,\s*255\s*,\s*255\s*(?:,\s*[^)]*)?\s*\))\s*[;"]?/gi, '');
-          body = '<div class="email-iframe-wrap"><iframe class="email-iframe" sandbox="allow-top-navigation-by-user-activation allow-popups" scrolling="no" style="width:100%;border:none;overflow:hidden;" srcdoc="' + esc(cleanText.replace(/"/g, '&quot;')) + '"></iframe></div>';
-        } else {
-          body = '<div class="plain-text">' + esc(email.body_text) + '</div>';
-        }
+        body = '<div class="plain-text">' + esc(email.body_text) + '</div>';
       } else {
         body = '<div class="email-list-empty">此邮件没有正文内容</div>';
       }
@@ -1018,6 +1014,9 @@ function loadEmailDetail(id) {
           '</div>' +
           '<div class="preview-body">' + body + '</div>' +
         '</div>';
+      if (iframeCardId && iframeSrcdoc) {
+        mountEmailIframe(iframeCardId, iframeSrcdoc);
+      }
       fetch('/api/emails/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_read: true }) });
     })
     .catch(function() {
@@ -1037,6 +1036,84 @@ function formatTime(dateStr) {
 }
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// Build the srcdoc for an email's sandbox iframe. Wraps the (already-server-
+// sanitized) HTML in a complete document with a CSP, base target, and a stylesheet
+// tuned to the app's warm editorial palette so the email body sits naturally
+// inside the surrounding interface.
+function buildEmailSrcdoc(rawHtml) {
+  var css = [
+    'html,body{margin:0;padding:0;background:#fdfaf4;color:#2b2a27;}',
+    'body{padding:32px 36px;font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue","Noto Sans SC","PingFang SC",sans-serif;word-break:break-word;}',
+    'img{max-width:100%;height:auto;border-radius:4px;}',
+    'pre{overflow-x:auto;padding:14px 16px;background:#f5f1ea;border:1px solid #e9e2d5;border-radius:6px;font:13px/1.55 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;white-space:pre-wrap;word-break:break-word;}',
+    'code{background:#f0ebe1;padding:2px 6px;border-radius:4px;font:13px/1.5 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;}',
+    'pre code{background:transparent;padding:0;border-radius:0;}',
+    'blockquote{border-left:3px solid #c8956c;margin:16px 0;padding:6px 16px;color:#5d574d;background:rgba(200,149,108,0.06);border-radius:0 6px 6px 0;}',
+    'table{border-collapse:collapse;max-width:100%;margin:14px 0;}',
+    'td,th{border:1px solid #e9e2d5;padding:8px 12px;}',
+    'th{background:#f5f1ea;font-weight:600;}',
+    'a{color:#8a6340;text-decoration:none;border-bottom:1px solid rgba(176,125,86,0.35);}',
+    'a:hover{border-bottom-color:#8a6340;}',
+    'h1,h2,h3,h4,h5,h6{color:#1a1917;margin:18px 0 8px;line-height:1.35;letter-spacing:0.005em;}',
+    'h1:first-child,h2:first-child,h3:first-child,h4:first-child{margin-top:0;}',
+    'h1{font-size:22px;}h2{font-size:18px;}h3{font-size:16px;}',
+    'p{margin:10px 0;}p:first-child{margin-top:0;}p:last-child{margin-bottom:0;}',
+    'ul,ol{padding-left:24px;margin:10px 0;}li{margin:4px 0;}',
+    'hr{border:0;border-top:1px solid #e9e2d5;margin:20px 0;}'
+  ].join('');
+  // Block any inline / remote scripts and iframes the sanitizer might have
+  // missed. Remote images stay allowed for parity with previous behavior —
+  // a per-sender "block remote content" toggle is a separate follow-up.
+  var csp = "default-src 'none'; img-src data: cid: https: http:; style-src 'unsafe-inline'; font-src data: https:; media-src data:; base-uri 'none';";
+  return '<!doctype html><html><head>'
+    + '<meta charset="utf-8">'
+    + '<meta http-equiv="Content-Security-Policy" content="' + csp + '">'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<base target="_blank">'
+    + '<style>' + css + '</style>'
+    + '</head><body>' + rawHtml + '</body></html>';
+}
+
+// Inject the sandbox iframe into the given card and wire up auto-height.
+function mountEmailIframe(cardId, srcdoc) {
+  setTimeout(function() {
+    var card = document.getElementById(cardId);
+    if (!card) return;
+    var iframe = document.createElement('iframe');
+    iframe.className = 'email-iframe';
+    // No allow-scripts → JS in srcdoc cannot execute. allow-same-origin so the
+    // parent can read contentDocument for auto-height (safe here because
+    // scripts are still disabled). allow-popups so links can open new tabs.
+    iframe.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox allow-same-origin');
+    iframe.setAttribute('referrerpolicy', 'no-referrer');
+    iframe.srcdoc = srcdoc;
+    iframe.addEventListener('load', function() {
+      var doc = iframe.contentDocument;
+      if (!doc) return;
+      var resize = function() {
+        // Use scrollHeight on documentElement, fall back to body. Add 2px to
+        // avoid an internal scrollbar from sub-pixel rounding.
+        var h = Math.max(doc.documentElement.scrollHeight, doc.body ? doc.body.scrollHeight : 0);
+        iframe.style.height = (h + 2) + 'px';
+      };
+      resize();
+      if (typeof ResizeObserver !== 'undefined') {
+        var ro = new ResizeObserver(resize);
+        ro.observe(doc.documentElement);
+        if (doc.body) ro.observe(doc.body);
+      }
+      // Re-measure once images finish loading (height can grow significantly).
+      var imgs = doc.querySelectorAll('img');
+      for (var i = 0; i < imgs.length; i++) {
+        var img = imgs[i];
+        if (!img.complete) img.addEventListener('load', resize, { once: true });
+        img.addEventListener('error', resize, { once: true });
+      }
+    });
+    card.appendChild(iframe);
+  }, 0);
+}
 function jsStringToColor(str) {
   var hash = 0;
   for (var i = 0; i < str.length; i++) {
