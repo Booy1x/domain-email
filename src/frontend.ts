@@ -1113,6 +1113,13 @@ function buildEmailSrcdoc(rawHtml) {
 }
 
 // Inject the sandbox iframe into the given card and wire up auto-height.
+//
+// Reveal timing matters: the iframe's native `load` event only fires once
+// every subresource (images, fonts, tracking pixels) has finished loading.
+// For marketing emails with images spread across multiple CDNs that can be
+// 1–2 seconds. To avoid that lag, we reveal as soon as the DOM has parsed
+// (DOMContentLoaded) and refine the height as images stream in. The `load`
+// event is kept as a final fallback in case neither earlier trigger fires.
 function mountEmailIframe(cardId, srcdoc) {
   setTimeout(function() {
     var card = document.getElementById(cardId);
@@ -1125,34 +1132,78 @@ function mountEmailIframe(cardId, srcdoc) {
     iframe.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox allow-same-origin');
     iframe.setAttribute('referrerpolicy', 'no-referrer');
     iframe.srcdoc = srcdoc;
-    iframe.addEventListener('load', function() {
+
+    var revealed = false;
+    var resize = function() {
       var doc = iframe.contentDocument;
       if (!doc) return;
-      var resize = function() {
-        // Use scrollHeight on documentElement, fall back to body. Add 2px to
-        // avoid an internal scrollbar from sub-pixel rounding.
-        var h = Math.max(doc.documentElement.scrollHeight, doc.body ? doc.body.scrollHeight : 0);
-        iframe.style.height = (h + 2) + 'px';
-      };
+      var h = Math.max(
+        doc.documentElement ? doc.documentElement.scrollHeight : 0,
+        doc.body ? doc.body.scrollHeight : 0
+      );
+      if (h > 0) iframe.style.height = (h + 2) + 'px';
+    };
+    var reveal = function() {
+      if (revealed) return;
+      var doc = iframe.contentDocument;
+      // Nothing useful to show yet — wait for a later trigger.
+      if (!doc || !doc.documentElement) return;
+      var h = Math.max(
+        doc.documentElement.scrollHeight,
+        doc.body ? doc.body.scrollHeight : 0
+      );
+      if (h === 0) return;
       resize();
-      // First measure done — reveal the iframe and hide the spinner. The
-      // fade-in masks any tiny height adjustment that happens immediately
-      // after as fonts / images finish loading.
       iframe.classList.add('ready');
       card.classList.add('iframe-ready');
+      revealed = true;
+    };
+    var wireDoc = function() {
+      var doc = iframe.contentDocument;
+      if (!doc) return;
+      // ResizeObserver catches every layout change (image load, font swap,
+      // table reflow). Cheap and steady.
       if (typeof ResizeObserver !== 'undefined') {
-        var ro = new ResizeObserver(resize);
+        var ro = new ResizeObserver(function() { resize(); reveal(); });
         ro.observe(doc.documentElement);
         if (doc.body) ro.observe(doc.body);
       }
-      // Re-measure once images finish loading (height can grow significantly).
+      // Per-image listeners so we still refresh height as remote images
+      // stream in after the initial reveal.
       var imgs = doc.querySelectorAll('img');
       for (var i = 0; i < imgs.length; i++) {
         var img = imgs[i];
         if (!img.complete) img.addEventListener('load', resize, { once: true });
         img.addEventListener('error', resize, { once: true });
       }
+    };
+
+    // Fast path 1: srcdoc renders synchronously into contentDocument in
+    // most browsers. Try to measure & reveal immediately on next tick.
+    setTimeout(function() {
+      var doc = iframe.contentDocument;
+      if (doc && doc.readyState !== 'loading') {
+        reveal();
+        wireDoc();
+        return;
+      }
+      // Fast path 2: hook DOMContentLoaded inside the iframe document so
+      // we reveal as soon as HTML parsing completes, not when images load.
+      if (doc) {
+        doc.addEventListener('DOMContentLoaded', function() {
+          reveal();
+          wireDoc();
+        }, { once: true });
+      }
+    }, 0);
+
+    // Fallback: full load. If both fast paths missed (unusual), this is
+    // the last-resort trigger so the iframe is guaranteed to surface.
+    iframe.addEventListener('load', function() {
+      reveal();
+      wireDoc();
     });
+
     card.appendChild(iframe);
   }, 0);
 }
