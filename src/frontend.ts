@@ -1158,9 +1158,12 @@ function mountEmailIframe(cardId, srcdoc) {
       card.classList.add('iframe-ready');
       revealed = true;
     };
+    var wired = false;
     var wireDoc = function() {
+      if (wired) return;
       var doc = iframe.contentDocument;
       if (!doc) return;
+      wired = true;
       // ResizeObserver catches every layout change (image load, font swap,
       // table reflow). Cheap and steady.
       if (typeof ResizeObserver !== 'undefined') {
