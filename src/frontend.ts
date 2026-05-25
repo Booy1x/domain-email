@@ -513,7 +513,7 @@ export function inboxPage(domains: DomainData[]): string {
     width: 100%;
     border: 0;
     background: transparent;
-    overflow: hidden;
+    overflow: auto;
     /* Hidden until we have measured the real scrollHeight. Avoids the
        "small box for ~1s, then expands" flash that comes from the iframe
        UA default height. The card's ::after spinner is visible during
@@ -1090,7 +1090,7 @@ function esc(s) { var d = document.createElement('div'); d.textContent = s; retu
 // inside the surrounding interface.
 function buildEmailSrcdoc(rawHtml) {
   var css = [
-    'html,body{margin:0;padding:0;background:#fdfaf4;color:#2b2a27;overflow:hidden;}',
+    'html,body{margin:0;padding:0;background:#fdfaf4;color:#2b2a27;overflow:visible;}',
     'body{padding:32px 36px;font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue","Noto Sans SC","PingFang SC",sans-serif;word-break:break-word;}',
     'img{max-width:100%;height:auto;border-radius:4px;}',
     'pre{overflow-x:auto;padding:14px 16px;background:#f5f1ea;border:0;border-radius:6px;font:13px/1.55 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;white-space:pre-wrap;word-break:break-word;}',
@@ -1146,17 +1146,43 @@ function mountEmailIframe(cardId, srcdoc) {
     // scripts are still disabled). allow-popups so links can open new tabs.
     iframe.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox allow-same-origin');
     iframe.setAttribute('referrerpolicy', 'no-referrer');
-    iframe.setAttribute('scrolling', 'no');
+    iframe.setAttribute('scrolling', 'auto');
     iframe.srcdoc = srcdoc;
 
     var revealed = false;
-    var resize = function() {
+    var measureHeight = function() {
       var doc = iframe.contentDocument;
-      if (!doc) return;
-      var h = Math.max(
-        doc.documentElement ? doc.documentElement.scrollHeight : 0,
-        doc.body ? doc.body.scrollHeight : 0
-      );
+      if (!doc) return 0;
+      var values = [];
+      var add = function(v) {
+        if (v && isFinite(v)) values.push(v);
+      };
+      var root = doc.documentElement;
+      var body = doc.body;
+      if (root) {
+        add(root.scrollHeight);
+        add(root.offsetHeight);
+        add(root.clientHeight);
+        add(root.getBoundingClientRect().height);
+      }
+      if (body) {
+        add(body.scrollHeight);
+        add(body.offsetHeight);
+        add(body.clientHeight);
+        var bodyRect = body.getBoundingClientRect();
+        add(bodyRect.height);
+        var maxBottom = bodyRect.bottom;
+        var nodes = body.querySelectorAll('*');
+        for (var i = 0; i < nodes.length; i++) {
+          var rect = nodes[i].getBoundingClientRect();
+          if (rect.width || rect.height) maxBottom = Math.max(maxBottom, rect.bottom);
+        }
+        add(maxBottom - Math.min(bodyRect.top, 0));
+      }
+      return values.length ? Math.ceil(Math.max.apply(Math, values)) : 0;
+    };
+    var resize = function() {
+      var h = measureHeight();
       // Fill the card when content is shorter than the available space so
       // the paper surface reads as a full reading area rather than a small
       // box floating in dark space.
@@ -1169,10 +1195,7 @@ function mountEmailIframe(cardId, srcdoc) {
       var doc = iframe.contentDocument;
       // Nothing useful to show yet — wait for a later trigger.
       if (!doc || !doc.documentElement) return;
-      var h = Math.max(
-        doc.documentElement.scrollHeight,
-        doc.body ? doc.body.scrollHeight : 0
-      );
+      var h = measureHeight();
       if (h === 0) return;
       resize();
       iframe.classList.add('ready');
@@ -1201,6 +1224,13 @@ function mountEmailIframe(cardId, srcdoc) {
         img.addEventListener('error', resize, { once: true });
       }
     };
+    var settleChecks = 0;
+    var settleTimer = setInterval(function() {
+      resize();
+      reveal();
+      settleChecks++;
+      if (settleChecks >= 20) clearInterval(settleTimer);
+    }, 250);
 
     // Fast path 1: srcdoc renders synchronously into contentDocument in
     // most browsers. Try to measure & reveal immediately on next tick.
