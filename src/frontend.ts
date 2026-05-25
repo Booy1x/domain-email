@@ -1114,11 +1114,11 @@ function buildEmailSrcdoc(rawHtml) {
 
 // Inject the sandbox iframe into the given card and wire up auto-height.
 //
-// Reveal timing matters: the iframe's native `load` event only fires once
+// Reveal timing matters: the iframe native load event only fires once
 // every subresource (images, fonts, tracking pixels) has finished loading.
 // For marketing emails with images spread across multiple CDNs that can be
-// 1–2 seconds. To avoid that lag, we reveal as soon as the DOM has parsed
-// (DOMContentLoaded) and refine the height as images stream in. The `load`
+// 1-2 seconds. To avoid that lag, we reveal as soon as the DOM has parsed
+// (DOMContentLoaded) and refine the height as images stream in. The load
 // event is kept as a final fallback in case neither earlier trigger fires.
 function mountEmailIframe(cardId, srcdoc) {
   setTimeout(function() {
