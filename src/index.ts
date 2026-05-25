@@ -196,6 +196,13 @@ app.get('/api/emails/:id', async (c) => {
       }
     }
 
+    // Email bodies are immutable once stored — only `is_read` / `is_flagged`
+    // flip later, and those are fetched via the list endpoint. Letting the
+    // browser keep a short private cache means re-opening the same email
+    // within a session round-trips to memory instead of the Worker. The
+    // server-side sanitizer still runs on each new fetch, so a sanitizer
+    // rule change continues to take effect within max-age seconds.
+    c.header('Cache-Control', 'private, max-age=300');
     return c.json(sanitizeEmailRow(email));
   } catch (e) {
     console.error('Failed to get email detail:', id, e);
