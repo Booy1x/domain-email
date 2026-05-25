@@ -372,7 +372,7 @@ export function inboxPage(domains: DomainData[]): string {
 
   /* ── Preview ── */
   .preview {
-    flex: 1; overflow-y: auto; background: var(--bg);
+    flex: 1; overflow: hidden; background: var(--bg);
     display: flex; flex-direction: column;
     min-height: 0;
   }
@@ -385,10 +385,11 @@ export function inboxPage(domains: DomainData[]): string {
   .preview-empty span { font-size: 13px; font-style: italic; letter-spacing: 0.02em; }
 
   .preview-content {
-    max-width: 820px; width: 100%; margin: 0 auto; padding: 24px 32px 48px;
+    max-width: 820px; width: 100%; margin: 0 auto; padding: 24px 32px 32px;
     animation: fadeIn 0.3s cubic-bezier(0.2, 0, 0, 1);
-    flex: 1 0 auto; display: flex; flex-direction: column;
-    min-height: 100%;
+    flex: 1 1 auto; display: flex; flex-direction: column;
+    height: 100%;
+    min-height: 0;
   }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -396,6 +397,7 @@ export function inboxPage(domains: DomainData[]): string {
     margin-bottom: 20px; padding-bottom: 16px;
     border-bottom: 1px solid var(--border);
     position: relative;
+    flex: 0 0 auto;
   }
   .preview-header::after {
     content: ''; position: absolute; bottom: -1px; left: 0; width: 48px; height: 1px;
@@ -443,6 +445,9 @@ export function inboxPage(domains: DomainData[]): string {
     letter-spacing: 0.01em;
     padding: 4px 0 0; border-radius: 0;
     background: transparent; border: 0;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   /* ── HTML email "paper card" ── */
@@ -460,7 +465,7 @@ export function inboxPage(domains: DomainData[]): string {
        (~80–150px) for the brief moment before the load event fires, which
        reads as the email "popping open" twice. The card stays at this min
        until the iframe reports a larger scrollHeight. */
-    min-height: 240px;
+    min-height: 0;
     flex: 1 1 auto;
     background: transparent;
     border-radius: 0;
@@ -522,7 +527,9 @@ export function inboxPage(domains: DomainData[]): string {
     transition: opacity 0.18s ease;
     position: relative;
     z-index: 1;
-    /* height set dynamically via JS once the load event fires */
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
   }
   .email-iframe.ready {
     opacity: 1;
@@ -1150,53 +1157,14 @@ function mountEmailIframe(cardId, srcdoc) {
     iframe.srcdoc = srcdoc;
 
     var revealed = false;
-    var measureHeight = function() {
-      var doc = iframe.contentDocument;
-      if (!doc) return 0;
-      var values = [];
-      var add = function(v) {
-        if (v && isFinite(v)) values.push(v);
-      };
-      var root = doc.documentElement;
-      var body = doc.body;
-      if (root) {
-        add(root.scrollHeight);
-        add(root.offsetHeight);
-        add(root.clientHeight);
-        add(root.getBoundingClientRect().height);
-      }
-      if (body) {
-        add(body.scrollHeight);
-        add(body.offsetHeight);
-        add(body.clientHeight);
-        var bodyRect = body.getBoundingClientRect();
-        add(bodyRect.height);
-        var maxBottom = bodyRect.bottom;
-        var nodes = body.querySelectorAll('*');
-        for (var i = 0; i < nodes.length; i++) {
-          var rect = nodes[i].getBoundingClientRect();
-          if (rect.width || rect.height) maxBottom = Math.max(maxBottom, rect.bottom);
-        }
-        add(maxBottom - Math.min(bodyRect.top, 0));
-      }
-      return values.length ? Math.ceil(Math.max.apply(Math, values)) : 0;
-    };
     var resize = function() {
-      var h = measureHeight();
-      // Fill the card when content is shorter than the available space so
-      // the paper surface reads as a full reading area rather than a small
-      // box floating in dark space.
-      var cardH = card ? card.clientHeight : 0;
-      if (cardH > 0 && h < cardH) h = cardH;
-      if (h > 0) iframe.style.height = (h + 2) + 'px';
+      iframe.style.height = '100%';
     };
     var reveal = function() {
       if (revealed) return;
       var doc = iframe.contentDocument;
       // Nothing useful to show yet — wait for a later trigger.
       if (!doc || !doc.documentElement) return;
-      var h = measureHeight();
-      if (h === 0) return;
       resize();
       iframe.classList.add('ready');
       card.classList.add('iframe-ready');
@@ -1208,29 +1176,14 @@ function mountEmailIframe(cardId, srcdoc) {
       var doc = iframe.contentDocument;
       if (!doc) return;
       wired = true;
-      // ResizeObserver catches every layout change (image load, font swap,
-      // table reflow). Cheap and steady.
-      if (typeof ResizeObserver !== 'undefined') {
-        var ro = new ResizeObserver(function() { resize(); reveal(); });
-        ro.observe(doc.documentElement);
-        if (doc.body) ro.observe(doc.body);
-      }
-      // Per-image listeners so we still refresh height as remote images
-      // stream in after the initial reveal.
+      // Per-image listeners reveal again as remote images stream in.
       var imgs = doc.querySelectorAll('img');
       for (var i = 0; i < imgs.length; i++) {
         var img = imgs[i];
-        if (!img.complete) img.addEventListener('load', resize, { once: true });
-        img.addEventListener('error', resize, { once: true });
+        if (!img.complete) img.addEventListener('load', reveal, { once: true });
+        img.addEventListener('error', reveal, { once: true });
       }
     };
-    var settleChecks = 0;
-    var settleTimer = setInterval(function() {
-      resize();
-      reveal();
-      settleChecks++;
-      if (settleChecks >= 20) clearInterval(settleTimer);
-    }, 250);
 
     // Fast path 1: srcdoc renders synchronously into contentDocument in
     // most browsers. Try to measure & reveal immediately on next tick.
