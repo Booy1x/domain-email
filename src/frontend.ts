@@ -1093,21 +1093,26 @@ function buildEmailSrcdoc(rawHtml) {
     'html,body{margin:0;padding:0;background:#fdfaf4;color:#2b2a27;overflow:hidden;}',
     'body{padding:32px 36px;font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue","Noto Sans SC","PingFang SC",sans-serif;word-break:break-word;}',
     'img{max-width:100%;height:auto;border-radius:4px;}',
-    'pre{overflow-x:auto;padding:14px 16px;background:#f5f1ea;border:1px solid #e9e2d5;border-radius:6px;font:13px/1.55 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;white-space:pre-wrap;word-break:break-word;}',
+    'pre{overflow-x:auto;padding:14px 16px;background:#f5f1ea;border:0;border-radius:6px;font:13px/1.55 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;white-space:pre-wrap;word-break:break-word;}',
     'code{background:#f0ebe1;padding:2px 6px;border-radius:4px;font:13px/1.5 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;}',
     'pre code{background:transparent;padding:0;border-radius:0;}',
-    'blockquote{border-left:3px solid #c8956c;margin:16px 0;padding:6px 16px;color:#5d574d;background:rgba(200,149,108,0.06);border-radius:0 6px 6px 0;}',
+    'blockquote{border:0;margin:16px 0;padding:6px 16px;color:#5d574d;background:rgba(200,149,108,0.06);border-radius:6px;}',
     'table{border-collapse:collapse;max-width:100%;margin:14px 0;}',
-    'td,th{border:1px solid #e9e2d5;padding:8px 12px;}',
+    'td,th{border:0;padding:8px 12px;}',
     'th{background:#f5f1ea;font-weight:600;}',
-    'a{color:#8a6340;text-decoration:none;border-bottom:1px solid rgba(176,125,86,0.35);}',
-    'a:hover{border-bottom-color:#8a6340;}',
+    'a{color:#8a6340;text-decoration:none;border-bottom:0;}',
+    'a:hover{color:#6f4f33;}',
     'h1,h2,h3,h4,h5,h6{color:#1a1917;margin:18px 0 8px;line-height:1.35;letter-spacing:0.005em;}',
     'h1:first-child,h2:first-child,h3:first-child,h4:first-child{margin-top:0;}',
     'h1{font-size:22px;}h2{font-size:18px;}h3{font-size:16px;}',
     'p{margin:10px 0;}p:first-child{margin-top:0;}p:last-child{margin-bottom:0;}',
     'ul,ol{padding-left:24px;margin:10px 0;}li{margin:4px 0;}',
-    'hr{border:0;border-top:1px solid #e9e2d5;margin:20px 0;}'
+    'hr{border:0;height:1px;background:rgba(43,42,39,0.08);margin:20px 0;}',
+    'table,tbody,thead,tfoot,tr,td,th,div,section,article{border:0!important;outline:0!important;box-shadow:none!important;}',
+    '[border]{border:0!important;}',
+    '[style*="border"]{border:0!important;}',
+    '[style*="outline"]{outline:0!important;}',
+    '[style*="box-shadow"]{box-shadow:none!important;}'
   ].join('');
   // Block any inline / remote scripts and iframes the sanitizer might have
   // missed. Remote images stay allowed for parity with previous behavior —
