@@ -371,7 +371,11 @@ export function inboxPage(domains: DomainData[]): string {
   .email-btn-restore:hover { background: var(--accent-dim); color: var(--accent); }
 
   /* ── Preview ── */
-  .preview { flex: 1; overflow-y: auto; background: var(--bg); }
+  .preview {
+    flex: 1; overflow-y: auto; background: var(--bg);
+    display: flex; flex-direction: column;
+    min-height: 0;
+  }
 
   .preview-empty {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -381,8 +385,10 @@ export function inboxPage(domains: DomainData[]): string {
   .preview-empty span { font-size: 13px; font-style: italic; letter-spacing: 0.02em; }
 
   .preview-content {
-    max-width: 820px; margin: 0 auto; padding: 24px 32px 48px;
+    max-width: 820px; width: 100%; margin: 0 auto; padding: 24px 32px 48px;
     animation: fadeIn 0.3s cubic-bezier(0.2, 0, 0, 1);
+    flex: 1 0 auto; display: flex; flex-direction: column;
+    min-height: 100%;
   }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -424,7 +430,11 @@ export function inboxPage(domains: DomainData[]): string {
     background: var(--bg-surface); border: 1px solid var(--border);
   }
 
-  .preview-body { padding-top: 4px; }
+  .preview-body {
+    padding-top: 4px;
+    flex: 1 1 auto;
+    display: flex; flex-direction: column;
+  }
   .preview-body .plain-text {
     font-family: 'DM Sans', 'Noto Sans SC', sans-serif;
     font-size: 14.5px; line-height: 1.8; color: var(--text-2);
@@ -442,13 +452,15 @@ export function inboxPage(domains: DomainData[]): string {
      a stark white slab. */
   .email-iframe-card {
     position: relative;
-    display: block;
+    display: flex;
+    flex-direction: column;
     /* Hold a sensible paper size while the iframe is still measuring its
        own content. Without this the iframe collapses to its UA default
        (~80–150px) for the brief moment before the load event fires, which
        reads as the email "popping open" twice. The card stays at this min
        until the iframe reports a larger scrollHeight. */
     min-height: 240px;
+    flex: 1 1 auto;
     background: #fdfaf4;
     border-radius: 12px;
     overflow: hidden;
@@ -1141,6 +1153,11 @@ function mountEmailIframe(cardId, srcdoc) {
         doc.documentElement ? doc.documentElement.scrollHeight : 0,
         doc.body ? doc.body.scrollHeight : 0
       );
+      // Fill the card when content is shorter than the available space so
+      // the paper surface reads as a full reading area rather than a small
+      // box floating in dark space.
+      var cardH = card ? card.clientHeight : 0;
+      if (cardH > 0 && h < cardH) h = cardH;
       if (h > 0) iframe.style.height = (h + 2) + 'px';
     };
     var reveal = function() {
