@@ -1,12 +1,19 @@
 // HTML Sanitizer — strip XSS vectors before sending to client
 // Removes: scripts, event handlers, javascript: URIs, data: URIs,
 //          expression(), -moz-binding, and other known attack vectors.
+//
+// Style-bearing tags (<style>, <font>, <center>) are preserved so that
+// HTML emails keep the typography and layout the sender intended. The
+// surrounding iframe sandbox + CSP (see frontend.ts) provide the actual
+// JS/cross-origin isolation; this sanitizer's job is to scrub known
+// CSS/URI attack vectors so what reaches the iframe is well-formed and
+// can't run code even if the iframe defenses were ever weakened.
 
 const ALLOWED_TAGS = new Set([
   'a','abbr','address','area','article','aside','audio',
-  'b','bdi','bdo','blockquote','br','button','canvas','caption','cite','code','col','colgroup','data','datalist','dd','del','details','dfn','dialog','div','dl','dt',
+  'b','bdi','bdo','blockquote','br','button','canvas','caption','center','cite','code','col','colgroup','data','datalist','dd','del','details','dfn','dialog','div','dl','dt',
   'em',
-  'fieldset','figcaption','figure','footer','form',
+  'fieldset','figcaption','figure','font','footer','form',
   'h1','h2','h3','h4','h5','h6','header','hgroup','hr',
   'i','img','input','ins',
   'kbd','label','legend','li',
@@ -16,7 +23,7 @@ const ALLOWED_TAGS = new Set([
   'p','picture','pre','progress',
   'q',
   'rp','rt','ruby',
-  's','samp','section','select','slot','small','source','span','strong','sub','summary','sup',
+  's','samp','section','select','slot','small','source','span','strong','style','sub','summary','sup',
   'table','tbody','td','textarea','tfoot','th','thead','time','tr','track',
   'u','ul',
   'var','video',
@@ -33,8 +40,24 @@ const DANGEROUS_CSS_RE = /(expression\s*\()|(moz-binding\s*:)/i;
 export function sanitizeHtml(html: string): string {
   if (!html) return '';
 
+  // Phase 0: Pull <style> blocks out of <head> before <head> itself gets
+  // dropped. Most marketing emails put their CSS in <head>, and losing it
+  // is what makes those emails render as "wireframes" downstream.
+  const headStyles: string[] = [];
+  let cleaned = html.replace(
+    /<head\b[^>]*>([\s\S]*?)<\/head>/gi,
+    (_, headContent: string) => {
+      const styleMatches = headContent.match(/<style\b[^>]*>[\s\S]*?<\/style>/gi);
+      if (styleMatches) headStyles.push(...styleMatches);
+      return '';
+    }
+  );
+  if (headStyles.length > 0) {
+    cleaned = headStyles.join('') + cleaned;
+  }
+
   // Phase 1: Remove dangerous elements entirely (script, object, embed, etc.)
-  let cleaned = html
+  cleaned = cleaned
     .replace(/<script[\s>][\s\S]*?<\/script>/gi, '')
     .replace(/<noscript[\s>][\s\S]*?<\/noscript>/gi, '')
     .replace(/<object[\s>][\s\S]*?<\/object>/gi, '')
@@ -44,14 +67,44 @@ export function sanitizeHtml(html: string): string {
     .replace(/<link[^>]*>/gi, '')
     .replace(/<meta[^>]*>/gi, '')
     .replace(/<base[^>]*>/gi, '')
-    .replace(/<head[\s>][\s\S]*?<\/head>/gi, '')
     .replace(/<\/(iframe|body|html|noscript|object|applet|form|embed|link|meta|base|script)\s*>/gi, '')
     .replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '')
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/<\?xml[\s\S]*?\?>/gi, '');
 
+  // Phase 1b: Scrub CSS inside <style> blocks. Defense-in-depth alongside
+  // the iframe sandbox + CSP. We neutralize the dangerous keyword rather
+  // than dropping the whole rule, so the surrounding CSS still parses.
+  cleaned = cleaned.replace(
+    /<style\b([^>]*)>([\s\S]*?)<\/style>/gi,
+    (_, attrs: string, css: string) => '<style' + attrs + '>' + scrubCss(css) + '</style>'
+  );
+
   // Phase 2: Parse and clean attributes using a simple state machine
   return cleanAttributes(cleaned);
+}
+
+function scrubCss(css: string): string {
+  return css
+    // IE CSS expressions: `width: expression(alert(1))`
+    .replace(/expression\s*\(/gi, 'invalid-expression(')
+    // Firefox legacy XBL bindings
+    .replace(/-moz-binding\s*:/gi, 'invalid-moz-binding:')
+    // IE behavior: url() pointing at HTC files
+    .replace(/\bbehavior\s*:/gi, 'invalid-behavior:')
+    // url(javascript:...) / url(vbscript:...) / url(data:text/html,...)
+    .replace(
+      /url\s*\(\s*(["']?)\s*(javascript|vbscript|data\s*:\s*text\/html)\b/gi,
+      'url($1invalid:'
+    )
+    // @import that pulls a javascript: scheme (rare but possible)
+    .replace(
+      /@import\s+(["']?)\s*(javascript|vbscript):/gi,
+      '@import $1invalid:'
+    )
+    // Stray </style> inside the block (would close it early and let raw
+    // text leak back into HTML parsing). Encode the closing angle bracket.
+    .replace(/<\/style\b/gi, '<\\/style');
 }
 
 function cleanAttributes(html: string): string {
