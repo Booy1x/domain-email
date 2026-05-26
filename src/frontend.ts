@@ -46,22 +46,22 @@ export function inboxPage(domains: DomainData[]): string {
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@400;600&display=swap');
 
   :root {
-    --bg: #0c0c0e;
-    --bg-surface: #131316;
-    --bg-elevated: #1a1a1e;
-    --bg-hover: rgba(255,255,255,0.04);
-    --bg-active: rgba(255,255,255,0.08);
-    --border: rgba(255,255,255,0.06);
-    --border-strong: rgba(255,255,255,0.12);
+    --bg: #1a1a1e;
+    --bg-surface: #232326;
+    --bg-elevated: #2c2c30;
+    --bg-hover: rgba(255,255,255,0.05);
+    --bg-active: rgba(255,255,255,0.09);
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.14);
     --text-1: #e8e6e3;
-    --text-2: #8a8784;
-    --text-3: #555350;
+    --text-2: #9a9793;
+    --text-3: #5f5c58;
     --accent: #c8956c;
     --accent-dim: rgba(200,149,108,0.15);
     --accent-text: #d4a87a;
     --red: #c97b7b;
-    --scrollbar: rgba(255,255,255,0.08);
-    --scrollbar-hover: rgba(255,255,255,0.16);
+    --scrollbar: rgba(255,255,255,0.10);
+    --scrollbar-hover: rgba(255,255,255,0.20);
     --radius: 6px;
   }
 
@@ -513,6 +513,20 @@ export function inboxPage(domains: DomainData[]): string {
   .light .email-iframe-card::before {
     background: transparent;
   }
+
+  /* ── Email original-style toggle (Outlook-style light-bulb) ── */
+  .email-style-toggle {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 5px;
+    border: 1px solid var(--border); background: var(--bg-surface);
+    color: var(--text-2); font-size: 11px; cursor: pointer;
+    transition: all 0.15s ease; margin-left: 12px; vertical-align: middle;
+    white-space: nowrap;
+  }
+  .email-style-toggle:hover { background: var(--bg-active); border-color: var(--border-strong); color: var(--text-1); }
+  .email-style-toggle:active { transform: scale(0.97); }
+  .email-style-toggle .toggle-icon { font-size: 13px; line-height: 1; }
+  .light .email-style-toggle { display: none; }
   .email-iframe {
     display: block;
     width: 100%;
@@ -564,7 +578,7 @@ export function inboxPage(domains: DomainData[]): string {
     pointer-events: auto;
     background: var(--bg-elevated); border: 1px solid var(--border-strong);
     border-radius: 10px; padding: 14px 18px; min-width: 280px; max-width: 380px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.15);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
     cursor: pointer; position: relative; overflow: hidden;
     animation: toastIn 0.35s cubic-bezier(0.2, 0, 0, 1);
     transition: transform 0.2s ease, opacity 0.2s ease;
@@ -697,6 +711,8 @@ fetch('/api/domains')
 document.getElementById('theme-toggle').addEventListener('click', function() {
   currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
   applyTheme(currentTheme);
+  // Re-render the email iframe with updated theme if one is visible
+  if (state.selectedId) loadEmailDetail(state.selectedId);
 });
 
 // Initial state: load recent 5 emails
@@ -1044,17 +1060,24 @@ function loadEmailDetail(id) {
       var isHtmlText = hasText && email.body_text.trim().charAt(0) === '<';
       var body;
       var iframeCardId = null;
-      var iframeSrcdoc = null;
+      var isDark = currentTheme === 'dark';
+      var rawHtmlSrc = hasHtml ? email.body_html : (isHtmlText ? email.body_text : null);
 
       if (hasHtml || isHtmlText) {
         iframeCardId = 'email-card-' + id;
         body = '<div class="email-iframe-card" id="' + iframeCardId + '"></div>';
-        iframeSrcdoc = buildEmailSrcdoc(hasHtml ? email.body_html : email.body_text);
       } else if (hasText) {
         body = '<div class="plain-text">' + esc(email.body_text) + '</div>';
       } else {
         body = '<div class="email-list-empty">此邮件没有正文内容</div>';
       }
+
+      var toggleBtn = (iframeCardId && isDark)
+        ? '<button class="email-style-toggle" id="email-style-toggle" data-original="0">' +
+            '<span class="toggle-icon">☀</span><span>查看原始样式</span>' +
+          '</button>'
+        : '';
+
       preview.innerHTML =
         '<div class="preview-content">' +
           '<div class="preview-header">' +
@@ -1063,13 +1086,35 @@ function loadEmailDetail(id) {
               '<span class="from">' + esc(email.mail_from) + '</span>' +
               '<span class="arrow">→</span>' +
               '<span>' + esc(email.rcpt_to) + '</span>' +
+              toggleBtn +
             '</div>' +
             '<div class="preview-date">' + new Date(email.date).toLocaleString('zh-CN') + '</div>' +
           '</div>' +
           '<div class="preview-body">' + body + '</div>' +
         '</div>';
-      if (iframeCardId && iframeSrcdoc) {
+
+      if (iframeCardId && rawHtmlSrc) {
+        var iframeSrcdoc = buildEmailSrcdoc(rawHtmlSrc, isDark);
         mountEmailIframe(iframeCardId, iframeSrcdoc);
+
+        // Wire up the original-style toggle (Outlook-style)
+        var toggleEl = document.getElementById('email-style-toggle');
+        if (toggleEl) {
+          toggleEl.addEventListener('click', function() {
+            var isOriginal = toggleEl.dataset.original === '1';
+            var newDark = isOriginal; // toggle back to dark
+            toggleEl.dataset.original = isOriginal ? '0' : '1';
+            toggleEl.querySelector('.toggle-icon').textContent = isOriginal ? '\u2600' : '\u263E';
+            toggleEl.querySelector('.toggle-icon').nextElementSibling.textContent = isOriginal ? '查看原始样式' : '暗色阅读模式';
+            var card = document.getElementById(iframeCardId);
+            if (card) {
+              card.innerHTML = '';
+              card.classList.remove('iframe-ready');
+            }
+            var newSrcdoc = buildEmailSrcdoc(rawHtmlSrc, newDark);
+            mountEmailIframe(iframeCardId, newSrcdoc);
+          });
+        }
       }
       fetch('/api/emails/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_read: true }) });
     })
@@ -1091,39 +1136,54 @@ function formatTime(dateStr) {
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-// Build the srcdoc for an email's sandbox iframe. Wraps the (already-server-
-// sanitized) HTML in a complete document with a CSP, base target, and a stylesheet
-// tuned to the app's warm editorial palette so the email body sits naturally
-// inside the surrounding interface.
-function buildEmailSrcdoc(rawHtml) {
-  var css = [
-    'html,body{margin:0;padding:0;background:#fdfaf4;color:#2b2a27;overflow:visible;}',
+// Build the srcdoc for an email sandbox iframe.
+// When dark=true, uses dark-mode colours (Apple Mail style).
+function buildEmailSrcdoc(rawHtml, dark) {
+  var base = [
     'body{padding:32px 36px;font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue","Noto Sans SC","PingFang SC",sans-serif;word-break:break-word;}',
     'img{max-width:100%;height:auto;border-radius:4px;}',
-    'pre{overflow-x:auto;padding:14px 16px;background:#f5f1ea;border:0;border-radius:6px;font:13px/1.55 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;white-space:pre-wrap;word-break:break-word;}',
-    'code{background:#f0ebe1;padding:2px 6px;border-radius:4px;font:13px/1.5 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;}',
-    'pre code{background:transparent;padding:0;border-radius:0;}',
-    'blockquote{border:0;margin:16px 0;padding:6px 16px;color:#5d574d;background:rgba(200,149,108,0.06);border-radius:6px;}',
-    'table{border-collapse:collapse;max-width:100%;margin:14px 0;}',
-    'td,th{border:0;padding:8px 12px;}',
-    'th{background:#f5f1ea;font-weight:600;}',
-    'a{color:#8a6340;text-decoration:none;border-bottom:0;}',
-    'a:hover{color:#6f4f33;}',
-    'h1,h2,h3,h4,h5,h6{color:#1a1917;margin:18px 0 8px;line-height:1.35;letter-spacing:0.005em;}',
-    'h1:first-child,h2:first-child,h3:first-child,h4:first-child{margin-top:0;}',
-    'h1{font-size:22px;}h2{font-size:18px;}h3{font-size:16px;}',
     'p{margin:10px 0;}p:first-child{margin-top:0;}p:last-child{margin-bottom:0;}',
     'ul,ol{padding-left:24px;margin:10px 0;}li{margin:4px 0;}',
-    'hr{border:0;height:1px;background:rgba(43,42,39,0.08);margin:20px 0;}',
+    'table{border-collapse:collapse;max-width:100%;margin:14px 0;}',
+    'td,th{border:0;padding:8px 12px;}',
+    'pre code{background:transparent;padding:0;border-radius:0;}',
+    'h1:first-child,h2:first-child,h3:first-child,h4:first-child{margin-top:0;}',
+    'h1{font-size:22px;}h2{font-size:18px;}h3{font-size:16px;}',
     'table,tbody,thead,tfoot,tr,td,th,div,section,article{border:0!important;outline:0!important;box-shadow:none!important;}',
     '[border]{border:0!important;}',
     '[style*="border"]{border:0!important;}',
     '[style*="outline"]{outline:0!important;}',
     '[style*="box-shadow"]{box-shadow:none!important;}'
   ].join('');
-  // Block any inline / remote scripts and iframes the sanitizer might have
-  // missed. Remote images stay allowed for parity with previous behavior —
-  // a per-sender "block remote content" toggle is a separate follow-up.
+
+  var theme;
+  if (dark) {
+    theme = [
+      'html,body{margin:0;padding:0;background:#2a2a2e;color:#d8d5d0;overflow:visible;}',
+      'pre{overflow-x:auto;padding:14px 16px;background:#333338;border:0;border-radius:6px;font:13px/1.55 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#c8c5c0;white-space:pre-wrap;word-break:break-word;}',
+      'code{background:#333338;padding:2px 6px;border-radius:4px;font:13px/1.5 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#c8c5c0;}',
+      'blockquote{border:0;margin:16px 0;padding:6px 16px;color:#a09d98;background:rgba(200,149,108,0.08);border-radius:6px;}',
+      'th{background:#333338;font-weight:600;color:#d8d5d0;}',
+      'a{color:#8ab4f8;text-decoration:none;border-bottom:0;}',
+      'a:hover{color:#aecbfa;}',
+      'h1,h2,h3,h4,h5,h6{color:#e8e6e3;margin:18px 0 8px;line-height:1.35;letter-spacing:0.005em;}',
+      'hr{border:0;height:1px;background:rgba(255,255,255,0.1);margin:20px 0;}',
+      '*{color-scheme:dark;}'
+    ].join('');
+  } else {
+    theme = [
+      'html,body{margin:0;padding:0;background:#fdfaf4;color:#2b2a27;overflow:visible;}',
+      'pre{overflow-x:auto;padding:14px 16px;background:#f5f1ea;border:0;border-radius:6px;font:13px/1.55 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;white-space:pre-wrap;word-break:break-word;}',
+      'code{background:#f0ebe1;padding:2px 6px;border-radius:4px;font:13px/1.5 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;}',
+      'blockquote{border:0;margin:16px 0;padding:6px 16px;color:#5d574d;background:rgba(200,149,108,0.06);border-radius:6px;}',
+      'th{background:#f5f1ea;font-weight:600;}',
+      'a{color:#8a6340;text-decoration:none;border-bottom:0;}',
+      'a:hover{color:#6f4f33;}',
+      'h1,h2,h3,h4,h5,h6{color:#1a1917;margin:18px 0 8px;line-height:1.35;letter-spacing:0.005em;}',
+      'hr{border:0;height:1px;background:rgba(43,42,39,0.08);margin:20px 0;}'
+    ].join('');
+  }
+  var css = theme + base;
   var csp = "default-src 'none'; img-src data: cid: https: http:; style-src 'unsafe-inline'; font-src data: https:; media-src data:; base-uri 'none';";
   return '<!doctype html><html><head>'
     + '<meta charset="utf-8">'
