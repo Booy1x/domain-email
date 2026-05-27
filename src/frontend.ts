@@ -888,7 +888,11 @@ document.getElementById('email-list').addEventListener('click', function(e) {
         .then(function() {
           var card = document.querySelector('.email-card[data-id="' + id + '"]');
           if (card) card.remove();
+          state.emails = state.emails.filter(function(e) { return e.id !== id; });
+          state.totalLoaded = state.emails.length;
+          document.getElementById('email-count').textContent = state.totalLoaded + ' 封';
           if (state.selectedId === id) {
+            state.selectedId = null;
             document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
           }
         });
