@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { parseEmail, streamToBuffer } from './mime';
-import { inboxPage } from './frontend';
+import { inboxPage } from './frontend/index';
 import { sanitizeHtml, escapeHtml } from './sanitize';
 import type { Env, EmailRow, AttachmentRow } from './types';
 import {
@@ -149,6 +149,12 @@ app.get('/api/emails/since', async (c) => {
   const ts = c.req.query('ts');
   if (!ts) return c.json({ error: 'missing ts param' }, 400);
   const emails = await listEmailsSince(c.env.INBOX_DB, ts);
+
+  const etag = emails.length > 0 ? emails[0].created_at : ts;
+  if (c.req.header('If-None-Match') === etag) {
+    return new Response(null, { status: 304 });
+  }
+  c.header('ETag', etag);
   return c.json({ emails });
 });
 
