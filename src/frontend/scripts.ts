@@ -4,6 +4,8 @@ var state = {
   selectedId: null, totalLoaded: 0, view: 'home'
 };
 var allDomains = [];
+var listRequestSeq = 0;
+var detailRequestSeq = 0;
 
 var originalFetch = window.fetch;
 window.fetch = function(url, opts) {
@@ -25,13 +27,7 @@ window.fetch = function(url, opts) {
 
 fetch('/api/domains')
   .then(function(r) { return r.json(); })
-  .then(function(domains) {
-    var total = 0;
-    for (var i = 0; i < domains.length; i++) {
-      total += domains[i].count;
-    }
-    document.getElementById('total-count').textContent = domains.length + ' 个域名 / ' + total + ' 封邮件';
-  })
+  .then(updateDomainSidebar)
   .catch(function() {});
 
 updateBreadcrumb();
@@ -77,6 +73,62 @@ document.getElementById('search-clear').addEventListener('click', function() {
   input.focus();
   searchMails();
 });
+
+function updateDomainSidebar(domains) {
+  allDomains = domains || [];
+  var total = 0;
+  for (var i = 0; i < allDomains.length; i++) {
+    total += allDomains[i].count;
+  }
+  document.getElementById('total-count').textContent = allDomains.length + ' 个域名 / ' + total + ' 封邮件';
+
+  document.querySelectorAll('.domain-tree').forEach(function(tree) {
+    var domain = tree.dataset.domain;
+    var domainData = null;
+    for (var i = 0; i < allDomains.length; i++) {
+      if (allDomains[i].domain === domain) {
+        domainData = allDomains[i];
+        break;
+      }
+    }
+    if (!domainData) return;
+    var domainCount = tree.querySelector('.domain-count');
+    if (domainCount) domainCount.textContent = domainData.count + '封 · ' + domainData.recipients.length + '账户';
+
+    tree.querySelectorAll('.rcpt-item').forEach(function(item) {
+      var rcpt = item.dataset.rcpt;
+      var rcptData = null;
+      for (var j = 0; j < domainData.recipients.length; j++) {
+        if (domainData.recipients[j].rcpt_user === rcpt) {
+          rcptData = domainData.recipients[j];
+          break;
+        }
+      }
+      if (!rcptData) return;
+      var rcptCount = item.querySelector('.rcpt-count');
+      if (rcptCount) rcptCount.textContent = rcptData.total;
+      var badge = item.querySelector('.rcpt-unread-badge');
+      if (rcptData.unread > 0) {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'rcpt-unread-badge';
+          var countEl = item.querySelector('.rcpt-count');
+          item.insertBefore(badge, countEl);
+        }
+        badge.textContent = rcptData.unread;
+      } else if (badge) {
+        badge.remove();
+      }
+    });
+  });
+}
+
+function refreshDomainCounts() {
+  fetch('/api/domains')
+    .then(function(r) { return r.json(); })
+    .then(updateDomainSidebar)
+    .catch(function() {});
+}
 
 document.querySelector('.domain-list').addEventListener('click', function(e) {
   var rcptItem = e.target.closest('.rcpt-item');
@@ -152,11 +204,13 @@ function updateBreadcrumb() {
 
 function loadHomeEmails() {
   if (state.loading) return;
+  var requestSeq = ++listRequestSeq;
   state.loading = true;
   document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
   fetch('/api/emails/recent?limit=10')
     .then(function(r) { return r.json(); })
     .then(function(data) {
+      if (requestSeq !== listRequestSeq) return;
       state.emails = data.emails || [];
       state.totalLoaded = state.emails.length;
       state.view = 'home';
@@ -164,9 +218,12 @@ function loadHomeEmails() {
       renderEmailList();
     })
     .catch(function() {
+      if (requestSeq !== listRequestSeq) return;
       document.getElementById('email-list').innerHTML = '<div class="error-msg">加载失败</div>';
     })
-    .finally(function() { state.loading = false; });
+    .finally(function() {
+      if (requestSeq === listRequestSeq) state.loading = false;
+    });
 }
 
 document.getElementById('email-list').addEventListener('click', function(e) {
@@ -176,8 +233,8 @@ document.getElementById('email-list').addEventListener('click', function(e) {
     var rid = restoreBtn.dataset.id;
     fetch('/api/emails/' + rid + '/restore', { method: 'POST' })
       .then(function() {
-        var card = document.querySelector('.email-card[data-id="' + rid + '"]');
-        if (card) card.remove();
+        loadTrash();
+        refreshDomainCounts();
       });
     return;
   }
@@ -198,6 +255,7 @@ document.getElementById('email-list').addEventListener('click', function(e) {
             state.selectedId = null;
             document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
           }
+          refreshDomainCounts();
         });
     }
     return;
@@ -224,6 +282,7 @@ document.getElementById('email-list').addEventListener('click', function(e) {
             readBtn.dataset.read = '0';
             readBtn.title = '标记已读';
           }
+          refreshDomainCounts();
         }
       })
       .catch(function() {});
@@ -232,6 +291,12 @@ document.getElementById('email-list').addEventListener('click', function(e) {
 
   var item = e.target.closest('.email-card');
   if (!item) return;
+  if (trashMode) {
+    document.querySelectorAll('.email-card').forEach(function(el) { el.classList.remove('active'); });
+    item.classList.add('active');
+    document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>已删除邮件请先恢复后查看</span></div>';
+    return;
+  }
   state.selectedId = item.dataset.id;
   document.querySelectorAll('.email-card').forEach(function(el) { el.classList.remove('active'); });
   item.classList.add('active');
@@ -252,7 +317,7 @@ document.getElementById('btn-trash').addEventListener('click', function() {
   document.getElementById('btn-trash').style.display = 'none';
   document.getElementById('btn-back').style.display = 'flex';
   document.getElementById('search').style.display = 'none';
-  document.getElementById('email-count').style.display = 'none';
+  document.getElementById('email-count').style.display = '';
   document.querySelector('.domain-list').style.opacity = '0.3';
   document.querySelector('.domain-list').style.pointerEvents = 'none';
   loadTrash();
@@ -266,8 +331,12 @@ document.getElementById('btn-back').addEventListener('click', function() {
   document.querySelector('.domain-list').style.opacity = '';
   document.querySelector('.domain-list').style.pointerEvents = '';
   state.cursor = null; state.emails = []; state.hasMore = true; state.selectedId = null; state.totalLoaded = 0;
-  document.getElementById('email-list').innerHTML = '<div class="email-list-empty">选择一个域名</div>';
   document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
+  if (state.view === 'home') {
+    loadHomeEmails();
+  } else {
+    loadEmails(true);
+  }
 });
 
 function loadTrash() {
@@ -276,11 +345,11 @@ function loadTrash() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       var emails = data.emails || [];
+      document.getElementById('email-count').textContent = emails.length + ' 封已删除';
       if (emails.length === 0) {
         document.getElementById('email-list').innerHTML = '<div class="email-list-empty">回收站为空</div>';
         return;
       }
-      document.getElementById('email-count').textContent = emails.length + ' 封已删除';
       document.getElementById('email-list').innerHTML = emails.map(function(e) {
         var timeStr = formatTime(e.date);
         return '<div class="email-card" data-id="' + e.id + '">' +
@@ -301,7 +370,8 @@ function loadTrash() {
 }
 
 function loadEmails(reset) {
-  if (state.loading || !state.hasMore) return;
+  if ((state.loading || !state.hasMore) && !reset) return;
+  var requestSeq = ++listRequestSeq;
   state.loading = true;
   var params = new URLSearchParams({ limit: '30' });
   if (state.domain) params.set('domain', state.domain);
@@ -312,6 +382,7 @@ function loadEmails(reset) {
   fetch('/api/emails?' + params)
     .then(function(r) { return r.json(); })
     .then(function(data) {
+      if (requestSeq !== listRequestSeq) return;
       if (reset) state.emails = data.emails;
       else state.emails.push.apply(state.emails, data.emails);
       state.cursor = data.cursor;
@@ -320,9 +391,12 @@ function loadEmails(reset) {
       renderEmailList();
     })
     .catch(function() {
+      if (requestSeq !== listRequestSeq) return;
       document.getElementById('email-list').innerHTML = '<div class="error-msg">加载失败</div>';
     })
-    .finally(function() { state.loading = false; });
+    .finally(function() {
+      if (requestSeq === listRequestSeq) state.loading = false;
+    });
 }
 
 function renderEmailList() {
@@ -354,11 +428,13 @@ function renderEmailList() {
 }
 
 function loadEmailDetail(id) {
+  var requestSeq = ++detailRequestSeq;
   var preview = document.getElementById('preview');
   preview.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
   fetch('/api/emails/' + id)
     .then(function(r) { return r.json(); })
     .then(function(email) {
+      if (requestSeq !== detailRequestSeq) return;
       var hasHtml = email.body_html && email.body_html.length > 0;
       var hasText = email.body_text && email.body_text.length > 0;
       var isHtmlText = hasText && email.body_text.trim().charAt(0) === '<';
@@ -393,9 +469,12 @@ function loadEmailDetail(id) {
         var iframeSrcdoc = buildEmailSrcdoc(rawHtmlSrc);
         mountEmailIframe(iframeCardId, iframeSrcdoc);
       }
-      fetch('/api/emails/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_read: true }) });
+      fetch('/api/emails/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_read: true }) })
+        .then(refreshDomainCounts)
+        .catch(function() {});
     })
     .catch(function() {
+      if (requestSeq !== detailRequestSeq) return;
       preview.innerHTML = '<div class="error-msg">加载失败</div>';
     });
 }
