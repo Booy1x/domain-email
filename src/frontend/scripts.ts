@@ -6,6 +6,8 @@ var state = {
 var allDomains = [];
 var listRequestSeq = 0;
 var detailRequestSeq = 0;
+var trashRequestSeq = 0;
+var previousInboxState = null;
 
 var originalFetch = window.fetch;
 window.fetch = function(url, opts) {
@@ -41,7 +43,7 @@ function searchMails() {
   if (q) {
     state.domain = '';
     state.rcptUser = '';
-    state.view = 'home';
+    state.view = 'search';
     document.querySelectorAll('.rcpt-item').forEach(function(el) { el.classList.remove('active'); });
     document.querySelectorAll('.domain-tree').forEach(function(el) { el.classList.remove('active'); });
     updateBreadcrumb();
@@ -191,6 +193,10 @@ function updateBreadcrumb() {
   var html = '';
   if (state.view === 'home') {
     html = '';
+  } else if (state.view === 'search') {
+    html = '<span class="bc-label">搜索结果</span>';
+  } else if (state.view === 'trash') {
+    html = '<span class="bc-label">回收站</span>';
   } else if (state.view === 'domain') {
     html = '<span class="bc-domain">' + esc(state.domain) + '</span>';
   } else if (state.view === 'rcpt') {
@@ -297,23 +303,42 @@ document.getElementById('email-list').addEventListener('click', function(e) {
 });
 
 document.getElementById('email-list').addEventListener('scroll', function(e) {
+  if (state.view === 'trash') return;
   var el = e.target;
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200 && state.hasMore && !state.loading) loadEmails();
 });
 
 var trashMode = false;
 document.getElementById('btn-trash').addEventListener('click', function() {
+  previousInboxState = {
+    domain: state.domain,
+    rcptUser: state.rcptUser,
+    view: state.view,
+    search: document.getElementById('search').value
+  };
   trashMode = true;
+  state.view = 'trash';
+  state.loading = false;
+  state.selectedId = null;
+  listRequestSeq++;
+  detailRequestSeq++;
   document.getElementById('btn-trash').style.display = 'none';
   document.getElementById('btn-back').style.display = 'flex';
   document.getElementById('search').style.display = 'none';
   document.getElementById('email-count').style.display = '';
   document.querySelector('.domain-list').style.opacity = '0.3';
   document.querySelector('.domain-list').style.pointerEvents = 'none';
+  document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
+  updateBreadcrumb();
   loadTrash();
 });
 document.getElementById('btn-back').addEventListener('click', function() {
+  var prev = previousInboxState;
+  previousInboxState = null;
   trashMode = false;
+  state.loading = false;
+  listRequestSeq++;
+  detailRequestSeq++;
   document.getElementById('btn-trash').style.display = 'flex';
   document.getElementById('btn-back').style.display = 'none';
   document.getElementById('search').style.display = '';
@@ -322,6 +347,14 @@ document.getElementById('btn-back').addEventListener('click', function() {
   document.querySelector('.domain-list').style.pointerEvents = '';
   state.cursor = null; state.emails = []; state.hasMore = true; state.selectedId = null; state.totalLoaded = 0;
   document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
+  if (prev) {
+    state.domain = prev.domain || '';
+    state.rcptUser = prev.rcptUser || '';
+    state.view = prev.view || 'home';
+    document.getElementById('search').value = prev.search || '';
+    toggleSearchClear();
+  }
+  updateBreadcrumb();
   if (state.view === 'home') {
     loadHomeEmails();
   } else {
@@ -330,10 +363,12 @@ document.getElementById('btn-back').addEventListener('click', function() {
 });
 
 function loadTrash() {
+  var requestSeq = ++trashRequestSeq;
   document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
   fetch('/api/emails/deleted?limit=50')
     .then(function(r) { return r.json(); })
     .then(function(data) {
+      if (requestSeq !== trashRequestSeq || state.view !== 'trash') return;
       var emails = data.emails || [];
       document.getElementById('email-count').textContent = emails.length + ' 封已删除';
       if (emails.length === 0) {
@@ -355,6 +390,7 @@ function loadTrash() {
       }).join('');
     })
     .catch(function() {
+      if (requestSeq !== trashRequestSeq || state.view !== 'trash') return;
       document.getElementById('email-list').innerHTML = '<div class="error-msg">加载失败</div>';
     });
 }
