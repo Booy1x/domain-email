@@ -545,7 +545,8 @@ function buildEmailSrcdoc(rawHtml) {
     'a{color:#8a6340;text-decoration:none;border-bottom:0;}',
     'a:hover{color:#6f4f33;}',
     'h1,h2,h3,h4,h5,h6{color:#1a1917;margin:18px 0 8px;line-height:1.35;letter-spacing:0.005em;}',
-    'hr{border:0;height:1px;background:rgba(43,42,39,0.08);margin:20px 0;}'
+    'hr{border:0;height:1px;background:rgba(43,42,39,0.08);margin:20px 0;}',
+    '@media(max-width:640px){body{padding:20px 18px;font-size:14px;}table{width:100%!important;}td,th{word-break:break-word;}}'
   ].join('');
   var csp = "default-src 'none'; img-src data: cid: https: http:; style-src 'unsafe-inline'; font-src data: https:; media-src data:; base-uri 'none';";
   return '<!doctype html><html><head>'
