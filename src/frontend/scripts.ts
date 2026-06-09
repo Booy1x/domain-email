@@ -8,6 +8,7 @@ var listRequestSeq = 0;
 var detailRequestSeq = 0;
 var trashRequestSeq = 0;
 var previousInboxState = null;
+var trashState = { emails: [], cursor: null, loading: false, hasMore: true };
 
 var originalFetch = window.fetch;
 window.fetch = function(url, opts) {
@@ -229,7 +230,7 @@ document.getElementById('email-list').addEventListener('click', function(e) {
     var rid = restoreBtn.dataset.id;
     fetch('/api/emails/' + rid + '/restore', { method: 'POST' })
       .then(function() {
-        loadTrash();
+        loadTrash(true);
         refreshDomainCounts();
       });
     return;
@@ -303,8 +304,11 @@ document.getElementById('email-list').addEventListener('click', function(e) {
 });
 
 document.getElementById('email-list').addEventListener('scroll', function(e) {
-  if (state.view === 'trash') return;
   var el = e.target;
+  if (state.view === 'trash') {
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200 && trashState.hasMore && !trashState.loading) loadTrash();
+    return;
+  }
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200 && state.hasMore && !state.loading) loadEmails();
 });
 
@@ -330,7 +334,7 @@ document.getElementById('btn-trash').addEventListener('click', function() {
   document.querySelector('.domain-list').style.pointerEvents = 'none';
   document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
   updateBreadcrumb();
-  loadTrash();
+  loadTrash(true);
 });
 document.getElementById('btn-back').addEventListener('click', function() {
   var prev = previousInboxState;
@@ -362,37 +366,57 @@ document.getElementById('btn-back').addEventListener('click', function() {
   }
 });
 
-function loadTrash() {
+function loadTrash(reset) {
+  if ((trashState.loading || !trashState.hasMore) && !reset) return;
   var requestSeq = ++trashRequestSeq;
-  document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
-  fetch('/api/emails/deleted?limit=50')
+  trashState.loading = true;
+  if (reset) {
+    trashState.emails = [];
+    trashState.cursor = null;
+    trashState.hasMore = true;
+    document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
+  }
+  var params = new URLSearchParams({ limit: '50' });
+  if (trashState.cursor) params.set('cursor', trashState.cursor);
+  fetch('/api/emails/deleted?' + params)
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (requestSeq !== trashRequestSeq || state.view !== 'trash') return;
       var emails = data.emails || [];
-      document.getElementById('email-count').textContent = emails.length + ' 封已删除';
-      if (emails.length === 0) {
-        document.getElementById('email-list').innerHTML = '<div class="email-list-empty">回收站为空</div>';
-        return;
-      }
-      document.getElementById('email-list').innerHTML = emails.map(function(e) {
-        var timeStr = formatTime(e.date);
-        return '<div class="email-card" data-id="' + e.id + '">' +
-          '<div class="email-card-top">' +
-            '<span class="email-from">' + esc(e.mail_from) + '</span>' +
-            '<span class="email-time">' + timeStr + '</span>' +
-          '</div>' +
-          '<div class="email-subject">' + esc(e.subject || '(无主题)') + '</div>' +
-          '<div class="email-actions" style="display:flex;">' +
-            '<button class="email-btn email-btn-restore" data-id="' + e.id + '" title="恢复">↩</button>' +
-          '</div>' +
-        '</div>';
-      }).join('');
+      if (reset) trashState.emails = emails;
+      else trashState.emails.push.apply(trashState.emails, emails);
+      trashState.cursor = data.cursor;
+      trashState.hasMore = !!data.cursor;
+      renderTrashList();
     })
     .catch(function() {
       if (requestSeq !== trashRequestSeq || state.view !== 'trash') return;
       document.getElementById('email-list').innerHTML = '<div class="error-msg">加载失败</div>';
+    })
+    .finally(function() {
+      if (requestSeq === trashRequestSeq) trashState.loading = false;
     });
+}
+
+function renderTrashList() {
+  document.getElementById('email-count').textContent = trashState.emails.length + (trashState.hasMore ? '+' : '') + ' 封已删除';
+  if (trashState.emails.length === 0) {
+    document.getElementById('email-list').innerHTML = '<div class="email-list-empty">回收站为空</div>';
+    return;
+  }
+  document.getElementById('email-list').innerHTML = trashState.emails.map(function(e) {
+    var timeStr = formatTime(e.date);
+    return '<div class="email-card" data-id="' + e.id + '">' +
+      '<div class="email-card-top">' +
+        '<span class="email-from">' + esc(e.mail_from) + '</span>' +
+        '<span class="email-time">' + timeStr + '</span>' +
+      '</div>' +
+      '<div class="email-subject">' + esc(e.subject || '(无主题)') + '</div>' +
+      '<div class="email-actions" style="display:flex;">' +
+        '<button class="email-btn email-btn-restore" data-id="' + e.id + '" title="恢复">↩</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
 }
 
 function loadEmails(reset) {
