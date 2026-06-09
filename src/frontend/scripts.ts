@@ -203,27 +203,17 @@ function updateBreadcrumb() {
 }
 
 function loadHomeEmails() {
-  if (state.loading) return;
-  var requestSeq = ++listRequestSeq;
-  state.loading = true;
+  state.domain = '';
+  state.rcptUser = '';
+  state.cursor = null;
+  state.emails = [];
+  state.hasMore = true;
+  state.selectedId = null;
+  state.totalLoaded = 0;
+  state.view = 'home';
+  updateBreadcrumb();
   document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
-  fetch('/api/emails/recent?limit=10')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (requestSeq !== listRequestSeq) return;
-      state.emails = data.emails || [];
-      state.totalLoaded = state.emails.length;
-      state.view = 'home';
-      updateBreadcrumb();
-      renderEmailList();
-    })
-    .catch(function() {
-      if (requestSeq !== listRequestSeq) return;
-      document.getElementById('email-list').innerHTML = '<div class="error-msg">加载失败</div>';
-    })
-    .finally(function() {
-      if (requestSeq === listRequestSeq) state.loading = false;
-    });
+  loadEmails(true);
 }
 
 document.getElementById('email-list').addEventListener('click', function(e) {
