@@ -4,6 +4,8 @@ var state = {
   selectedId: null, totalLoaded: 0, view: 'home'
 };
 var allDomains = [];
+var listRequestSeq = 0;
+var detailRequestSeq = 0;
 
 var originalFetch = window.fetch;
 window.fetch = function(url, opts) {
@@ -25,13 +27,7 @@ window.fetch = function(url, opts) {
 
 fetch('/api/domains')
   .then(function(r) { return r.json(); })
-  .then(function(domains) {
-    var total = 0;
-    for (var i = 0; i < domains.length; i++) {
-      total += domains[i].count;
-    }
-    document.getElementById('total-count').textContent = domains.length + ' 个域名 / ' + total + ' 封邮件';
-  })
+  .then(updateDomainSidebar)
   .catch(function() {});
 
 updateBreadcrumb();
@@ -43,7 +39,11 @@ function searchMails() {
   document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
   document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
   if (q) {
+    state.domain = '';
+    state.rcptUser = '';
     state.view = 'home';
+    document.querySelectorAll('.rcpt-item').forEach(function(el) { el.classList.remove('active'); });
+    document.querySelectorAll('.domain-tree').forEach(function(el) { el.classList.remove('active'); });
     updateBreadcrumb();
     loadEmails(true);
   } else if (state.domain) {
@@ -61,9 +61,7 @@ function toggleSearchClear() {
   var hasValue = document.getElementById('search').value.length > 0;
   btn.classList.toggle('visible', hasValue);
 }
-var searchInitialized = false;
 document.getElementById('search').addEventListener('input', function() {
-  if (!searchInitialized) { searchInitialized = true; return; }
   toggleSearchClear();
   clearTimeout(searchTimer);
   searchTimer = setTimeout(function() { searchMails(); }, 300);
@@ -75,6 +73,62 @@ document.getElementById('search-clear').addEventListener('click', function() {
   input.focus();
   searchMails();
 });
+
+function updateDomainSidebar(domains) {
+  allDomains = domains || [];
+  var total = 0;
+  for (var i = 0; i < allDomains.length; i++) {
+    total += allDomains[i].count;
+  }
+  document.getElementById('total-count').textContent = allDomains.length + ' 个域名 / ' + total + ' 封邮件';
+
+  document.querySelectorAll('.domain-tree').forEach(function(tree) {
+    var domain = tree.dataset.domain;
+    var domainData = null;
+    for (var i = 0; i < allDomains.length; i++) {
+      if (allDomains[i].domain === domain) {
+        domainData = allDomains[i];
+        break;
+      }
+    }
+    if (!domainData) return;
+    var domainCount = tree.querySelector('.domain-count');
+    if (domainCount) domainCount.textContent = domainData.count + '封 · ' + domainData.recipients.length + '账户';
+
+    tree.querySelectorAll('.rcpt-item').forEach(function(item) {
+      var rcpt = item.dataset.rcpt;
+      var rcptData = null;
+      for (var j = 0; j < domainData.recipients.length; j++) {
+        if (domainData.recipients[j].rcpt_user === rcpt) {
+          rcptData = domainData.recipients[j];
+          break;
+        }
+      }
+      if (!rcptData) return;
+      var rcptCount = item.querySelector('.rcpt-count');
+      if (rcptCount) rcptCount.textContent = rcptData.total;
+      var badge = item.querySelector('.rcpt-unread-badge');
+      if (rcptData.unread > 0) {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'rcpt-unread-badge';
+          var countEl = item.querySelector('.rcpt-count');
+          item.insertBefore(badge, countEl);
+        }
+        badge.textContent = rcptData.unread;
+      } else if (badge) {
+        badge.remove();
+      }
+    });
+  });
+}
+
+function refreshDomainCounts() {
+  fetch('/api/domains')
+    .then(function(r) { return r.json(); })
+    .then(updateDomainSidebar)
+    .catch(function() {});
+}
 
 document.querySelector('.domain-list').addEventListener('click', function(e) {
   var rcptItem = e.target.closest('.rcpt-item');
@@ -150,11 +204,13 @@ function updateBreadcrumb() {
 
 function loadHomeEmails() {
   if (state.loading) return;
+  var requestSeq = ++listRequestSeq;
   state.loading = true;
   document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
   fetch('/api/emails/recent?limit=10')
     .then(function(r) { return r.json(); })
     .then(function(data) {
+      if (requestSeq !== listRequestSeq) return;
       state.emails = data.emails || [];
       state.totalLoaded = state.emails.length;
       state.view = 'home';
@@ -162,9 +218,12 @@ function loadHomeEmails() {
       renderEmailList();
     })
     .catch(function() {
+      if (requestSeq !== listRequestSeq) return;
       document.getElementById('email-list').innerHTML = '<div class="error-msg">加载失败</div>';
     })
-    .finally(function() { state.loading = false; });
+    .finally(function() {
+      if (requestSeq === listRequestSeq) state.loading = false;
+    });
 }
 
 document.getElementById('email-list').addEventListener('click', function(e) {
@@ -174,8 +233,8 @@ document.getElementById('email-list').addEventListener('click', function(e) {
     var rid = restoreBtn.dataset.id;
     fetch('/api/emails/' + rid + '/restore', { method: 'POST' })
       .then(function() {
-        var card = document.querySelector('.email-card[data-id="' + rid + '"]');
-        if (card) card.remove();
+        loadTrash();
+        refreshDomainCounts();
       });
     return;
   }
@@ -196,6 +255,7 @@ document.getElementById('email-list').addEventListener('click', function(e) {
             state.selectedId = null;
             document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
           }
+          refreshDomainCounts();
         });
     }
     return;
@@ -222,6 +282,7 @@ document.getElementById('email-list').addEventListener('click', function(e) {
             readBtn.dataset.read = '0';
             readBtn.title = '标记已读';
           }
+          refreshDomainCounts();
         }
       })
       .catch(function() {});
@@ -230,6 +291,12 @@ document.getElementById('email-list').addEventListener('click', function(e) {
 
   var item = e.target.closest('.email-card');
   if (!item) return;
+  if (trashMode) {
+    document.querySelectorAll('.email-card').forEach(function(el) { el.classList.remove('active'); });
+    item.classList.add('active');
+    document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>已删除邮件请先恢复后查看</span></div>';
+    return;
+  }
   state.selectedId = item.dataset.id;
   document.querySelectorAll('.email-card').forEach(function(el) { el.classList.remove('active'); });
   item.classList.add('active');
@@ -250,7 +317,7 @@ document.getElementById('btn-trash').addEventListener('click', function() {
   document.getElementById('btn-trash').style.display = 'none';
   document.getElementById('btn-back').style.display = 'flex';
   document.getElementById('search').style.display = 'none';
-  document.getElementById('email-count').style.display = 'none';
+  document.getElementById('email-count').style.display = '';
   document.querySelector('.domain-list').style.opacity = '0.3';
   document.querySelector('.domain-list').style.pointerEvents = 'none';
   loadTrash();
@@ -264,8 +331,12 @@ document.getElementById('btn-back').addEventListener('click', function() {
   document.querySelector('.domain-list').style.opacity = '';
   document.querySelector('.domain-list').style.pointerEvents = '';
   state.cursor = null; state.emails = []; state.hasMore = true; state.selectedId = null; state.totalLoaded = 0;
-  document.getElementById('email-list').innerHTML = '<div class="email-list-empty">选择一个域名</div>';
   document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
+  if (state.view === 'home') {
+    loadHomeEmails();
+  } else {
+    loadEmails(true);
+  }
 });
 
 function loadTrash() {
@@ -274,11 +345,11 @@ function loadTrash() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       var emails = data.emails || [];
+      document.getElementById('email-count').textContent = emails.length + ' 封已删除';
       if (emails.length === 0) {
         document.getElementById('email-list').innerHTML = '<div class="email-list-empty">回收站为空</div>';
         return;
       }
-      document.getElementById('email-count').textContent = emails.length + ' 封已删除';
       document.getElementById('email-list').innerHTML = emails.map(function(e) {
         var timeStr = formatTime(e.date);
         return '<div class="email-card" data-id="' + e.id + '">' +
@@ -299,7 +370,8 @@ function loadTrash() {
 }
 
 function loadEmails(reset) {
-  if (state.loading || !state.hasMore) return;
+  if ((state.loading || !state.hasMore) && !reset) return;
+  var requestSeq = ++listRequestSeq;
   state.loading = true;
   var params = new URLSearchParams({ limit: '30' });
   if (state.domain) params.set('domain', state.domain);
@@ -310,6 +382,7 @@ function loadEmails(reset) {
   fetch('/api/emails?' + params)
     .then(function(r) { return r.json(); })
     .then(function(data) {
+      if (requestSeq !== listRequestSeq) return;
       if (reset) state.emails = data.emails;
       else state.emails.push.apply(state.emails, data.emails);
       state.cursor = data.cursor;
@@ -318,9 +391,12 @@ function loadEmails(reset) {
       renderEmailList();
     })
     .catch(function() {
+      if (requestSeq !== listRequestSeq) return;
       document.getElementById('email-list').innerHTML = '<div class="error-msg">加载失败</div>';
     })
-    .finally(function() { state.loading = false; });
+    .finally(function() {
+      if (requestSeq === listRequestSeq) state.loading = false;
+    });
 }
 
 function renderEmailList() {
@@ -352,11 +428,13 @@ function renderEmailList() {
 }
 
 function loadEmailDetail(id) {
+  var requestSeq = ++detailRequestSeq;
   var preview = document.getElementById('preview');
   preview.innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
   fetch('/api/emails/' + id)
     .then(function(r) { return r.json(); })
     .then(function(email) {
+      if (requestSeq !== detailRequestSeq) return;
       var hasHtml = email.body_html && email.body_html.length > 0;
       var hasText = email.body_text && email.body_text.length > 0;
       var isHtmlText = hasText && email.body_text.trim().charAt(0) === '<';
@@ -384,18 +462,56 @@ function loadEmailDetail(id) {
             '</div>' +
             '<div class="preview-date">' + new Date(email.date).toLocaleString('zh-CN') + '</div>' +
           '</div>' +
+          '<div class="attachment-list" id="attachment-list-' + id + '"></div>' +
           '<div class="preview-body">' + body + '</div>' +
         '</div>';
+
+      loadEmailAttachments(id, requestSeq);
 
       if (iframeCardId && rawHtmlSrc) {
         var iframeSrcdoc = buildEmailSrcdoc(rawHtmlSrc);
         mountEmailIframe(iframeCardId, iframeSrcdoc);
       }
-      fetch('/api/emails/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_read: true }) });
+      fetch('/api/emails/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_read: true }) })
+        .then(refreshDomainCounts)
+        .catch(function() {});
     })
     .catch(function() {
+      if (requestSeq !== detailRequestSeq) return;
       preview.innerHTML = '<div class="error-msg">加载失败</div>';
     });
+}
+
+function loadEmailAttachments(id, requestSeq) {
+  fetch('/api/emails/' + id + '/attachments')
+    .then(function(r) { return r.json(); })
+    .then(function(attachments) {
+      if (requestSeq !== detailRequestSeq) return;
+      var el = document.getElementById('attachment-list-' + id);
+      if (!el || !attachments || attachments.length === 0) return;
+      el.innerHTML = '<div class="attachment-title">附件</div>' +
+        attachments.map(function(att) {
+          var href = '/api/attachments/' + encodeURIComponent(att.r2_key);
+          return '<a class="attachment-item" href="' + href + '" target="_blank" rel="noopener noreferrer">' +
+            '<span class="attachment-icon">📎</span>' +
+            '<span class="attachment-name">' + esc(att.filename || '未命名附件') + '</span>' +
+            '<span class="attachment-size">' + esc(formatBytes(att.size || 0)) + '</span>' +
+          '</a>';
+        }).join('');
+    })
+    .catch(function() {});
+}
+
+function formatBytes(size) {
+  if (!size) return '0 B';
+  var units = ['B', 'KB', 'MB', 'GB'];
+  var value = size;
+  var unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value = value / 1024;
+    unit++;
+  }
+  return (unit === 0 ? value : value.toFixed(value >= 10 ? 0 : 1)) + ' ' + units[unit];
 }
 
 function formatTime(dateStr) {
@@ -415,19 +531,13 @@ function buildEmailSrcdoc(rawHtml) {
   var base = [
     'html,body{margin:0;padding:0;background:#f5f3f0;color:#2b2a27;overflow:visible;}',
     'body{padding:32px 36px;font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue","Noto Sans SC","PingFang SC",sans-serif;word-break:break-word;}',
-    'img{max-width:100%;height:auto;border-radius:4px;}',
+    'img,video,canvas{max-width:100%;height:auto;}',
     'p{margin:10px 0;}p:first-child{margin-top:0;}p:last-child{margin-bottom:0;}',
     'ul,ol{padding-left:24px;margin:10px 0;}li{margin:4px 0;}',
-    'table{border-collapse:collapse;max-width:100%;margin:14px 0;}',
-    'td,th{border:0;padding:8px 12px;}',
+    'table{max-width:100%;}',
     'pre code{background:transparent;padding:0;border-radius:0;}',
     'h1:first-child,h2:first-child,h3:first-child,h4:first-child{margin-top:0;}',
     'h1{font-size:22px;}h2{font-size:18px;}h3{font-size:16px;}',
-    'table,tbody,thead,tfoot,tr,td,th,div,section,article{border:0!important;outline:0!important;box-shadow:none!important;}',
-    '[border]{border:0!important;}',
-    '[style*="border"]{border:0!important;}',
-    '[style*="outline"]{outline:0!important;}',
-    '[style*="box-shadow"]{box-shadow:none!important;}',
     'pre{overflow-x:auto;padding:14px 16px;background:#f5f1ea;border:0;border-radius:6px;font:13px/1.55 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;white-space:pre-wrap;word-break:break-word;}',
     'code{background:#f0ebe1;padding:2px 6px;border-radius:4px;font:13px/1.5 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;}',
     'blockquote{border:0;margin:16px 0;padding:6px 16px;color:#5d574d;background:rgba(200,149,108,0.06);border-radius:6px;}',
@@ -435,7 +545,8 @@ function buildEmailSrcdoc(rawHtml) {
     'a{color:#8a6340;text-decoration:none;border-bottom:0;}',
     'a:hover{color:#6f4f33;}',
     'h1,h2,h3,h4,h5,h6{color:#1a1917;margin:18px 0 8px;line-height:1.35;letter-spacing:0.005em;}',
-    'hr{border:0;height:1px;background:rgba(43,42,39,0.08);margin:20px 0;}'
+    'hr{border:0;height:1px;background:rgba(43,42,39,0.08);margin:20px 0;}',
+    '@media(max-width:640px){body{padding:20px 18px;font-size:14px;}table{width:100%!important;}td,th{word-break:break-word;}}'
   ].join('');
   var csp = "default-src 'none'; img-src data: cid: https: http:; style-src 'unsafe-inline'; font-src data: https:; media-src data:; base-uri 'none';";
   return '<!doctype html><html><head>'
@@ -455,17 +566,50 @@ function mountEmailIframe(cardId, srcdoc) {
     iframe.className = 'email-iframe';
     iframe.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox allow-same-origin');
     iframe.setAttribute('referrerpolicy', 'no-referrer');
-    iframe.setAttribute('scrolling', 'auto');
+    iframe.setAttribute('scrolling', 'no');
     iframe.srcdoc = srcdoc;
 
     var revealed = false;
+    var measureHeight = function() {
+      var doc = iframe.contentDocument;
+      if (!doc) return 0;
+      var values = [];
+      var add = function(v) {
+        if (v && isFinite(v)) values.push(v);
+      };
+      var root = doc.documentElement;
+      var body = doc.body;
+      if (root) {
+        add(root.scrollHeight);
+        add(root.offsetHeight);
+        add(root.clientHeight);
+        add(root.getBoundingClientRect().height);
+      }
+      if (body) {
+        add(body.scrollHeight);
+        add(body.offsetHeight);
+        add(body.clientHeight);
+        var bodyRect = body.getBoundingClientRect();
+        add(bodyRect.height);
+        var maxBottom = bodyRect.bottom;
+        var nodes = body.querySelectorAll('*');
+        for (var i = 0; i < nodes.length; i++) {
+          var rect = nodes[i].getBoundingClientRect();
+          if (rect.width || rect.height) maxBottom = Math.max(maxBottom, rect.bottom);
+        }
+        add(maxBottom - Math.min(bodyRect.top, 0));
+      }
+      return values.length ? Math.ceil(Math.max.apply(Math, values)) : 0;
+    };
     var resize = function() {
-      iframe.style.height = '100%';
+      var h = measureHeight();
+      if (h > 0) iframe.style.height = (h + 2) + 'px';
     };
     var reveal = function() {
       if (revealed) return;
       var doc = iframe.contentDocument;
       if (!doc || !doc.documentElement) return;
+      if (measureHeight() === 0) return;
       resize();
       iframe.classList.add('ready');
       card.classList.add('iframe-ready');
@@ -477,13 +621,25 @@ function mountEmailIframe(cardId, srcdoc) {
       var doc = iframe.contentDocument;
       if (!doc) return;
       wired = true;
+      if (typeof ResizeObserver !== 'undefined') {
+        var ro = new ResizeObserver(function() { resize(); reveal(); });
+        ro.observe(doc.documentElement);
+        if (doc.body) ro.observe(doc.body);
+      }
       var imgs = doc.querySelectorAll('img');
       for (var i = 0; i < imgs.length; i++) {
         var img = imgs[i];
-        if (!img.complete) img.addEventListener('load', reveal, { once: true });
-        img.addEventListener('error', reveal, { once: true });
+        if (!img.complete) img.addEventListener('load', resize, { once: true });
+        img.addEventListener('error', resize, { once: true });
       }
     };
+    var settleChecks = 0;
+    var settleTimer = setInterval(function() {
+      resize();
+      reveal();
+      settleChecks++;
+      if (settleChecks >= 20) clearInterval(settleTimer);
+    }, 250);
 
     setTimeout(function() {
       var doc = iframe.contentDocument;

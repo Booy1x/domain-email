@@ -289,7 +289,7 @@ export const styles = `
 
   /* ── Preview ── */
   .preview {
-    flex: 1; overflow: hidden; background: var(--bg);
+    flex: 1; overflow-y: auto; overflow-x: hidden; background: var(--bg);
     display: flex; flex-direction: column;
     min-height: 0;
   }
@@ -305,8 +305,7 @@ export const styles = `
     max-width: 820px; width: 100%; margin: 0 auto; padding: 24px 32px 32px;
     animation: fadeIn 0.3s cubic-bezier(0.2, 0, 0, 1);
     flex: 1 1 auto; display: flex; flex-direction: column;
-    height: 100%;
-    min-height: 0;
+    min-height: 100%;
   }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -349,6 +348,45 @@ export const styles = `
     background: var(--bg-surface); border: 1px solid var(--border);
   }
 
+  .attachment-list {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin: -6px 0 18px;
+    flex: 0 0 auto;
+  }
+  .attachment-list:empty { display: none; }
+  .attachment-title {
+    width: 100%;
+    font-size: 11px; color: var(--text-3);
+  }
+  .attachment-item {
+    display: inline-flex; align-items: center; gap: 8px;
+    max-width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-surface);
+    color: var(--text-2);
+    text-decoration: none;
+    font-size: 12px;
+  }
+  .attachment-item:hover {
+    border-color: var(--border-strong);
+    color: var(--text-1);
+  }
+  .attachment-icon { flex: 0 0 auto; }
+  .attachment-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .attachment-size {
+    flex: 0 0 auto;
+    color: var(--text-3);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+  }
+
   .preview-body {
     padding-top: 4px;
     flex: 1 1 auto;
@@ -362,9 +400,6 @@ export const styles = `
     letter-spacing: 0.01em;
     padding: 4px 0 0; border-radius: 0;
     background: transparent; border: 0;
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
   }
 
   /* ── HTML email "paper card" ── */
@@ -372,11 +407,11 @@ export const styles = `
     position: relative;
     display: flex;
     flex-direction: column;
-    min-height: 0;
-    flex: 1 1 auto;
+    min-height: 160px;
+    flex: 0 0 auto;
     background: transparent;
     border-radius: 0;
-    overflow: hidden;
+    overflow: visible;
     border: 0;
     box-shadow: none;
     transition: box-shadow 0.3s ease, border-color 0.3s ease;
@@ -419,9 +454,8 @@ export const styles = `
     transition: opacity 0.18s ease;
     position: relative;
     z-index: 1;
-    flex: 1 1 auto;
-    min-height: 0;
-    height: 100%;
+    min-height: 160px;
+    height: 160px;
   }
   .email-iframe.ready {
     opacity: 1;
@@ -472,4 +506,42 @@ export const styles = `
   @keyframes toastIn { from { opacity: 0; transform: translateX(120%); } to { opacity: 1; transform: translateX(0); } }
   @keyframes toastOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(120%); } }
   @keyframes toastBar { from { width: 100%; } to { width: 0%; } }
+
+  @media (max-width: 900px) {
+    .app { flex-direction: column; }
+    .sidebar {
+      width: 100%; min-width: 0; max-height: 220px;
+      border-right: 0; border-bottom: 1px solid var(--border);
+    }
+    .sidebar-header { padding: 16px 20px 12px; }
+    .sidebar-label { padding: 10px 20px 6px; }
+    .domain-list { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 6px 12px 10px; }
+    .domain-tree { min-width: 220px; flex: 0 0 auto; }
+    .main { min-height: 0; }
+    .split { flex-direction: column; }
+    .email-list {
+      width: 100%; min-width: 0; height: 34vh;
+      border-right: 0; border-bottom: 1px solid var(--border);
+    }
+    .preview { flex: 1 1 auto; }
+    .preview-content { max-width: none; padding: 20px 24px 28px; }
+  }
+
+  @media (max-width: 640px) {
+    .toolbar { padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
+    .search-wrap { max-width: none; min-width: 0; flex-basis: 100%; order: 2; }
+    .email-total { margin-left: auto; }
+    .sidebar { max-height: 190px; }
+    .domain-tree { min-width: 190px; }
+    .email-list { height: 38vh; }
+    .email-card { padding: 12px 14px; padding-right: 54px; }
+    .preview-content { padding: 16px 14px 24px; }
+    .preview-subject { font-size: 18px; }
+    .preview-meta { flex-wrap: wrap; align-items: flex-start; }
+    .preview-meta .from,
+    .preview-meta .to { max-width: 100%; }
+    .attachment-item { width: 100%; }
+    .toast-container { left: 12px; right: 12px; bottom: 12px; }
+    .toast { min-width: 0; max-width: none; width: 100%; }
+  }
 `;
