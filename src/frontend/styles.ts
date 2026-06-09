@@ -289,7 +289,7 @@ export const styles = `
 
   /* ── Preview ── */
   .preview {
-    flex: 1; overflow: hidden; background: var(--bg);
+    flex: 1; overflow-y: auto; overflow-x: hidden; background: var(--bg);
     display: flex; flex-direction: column;
     min-height: 0;
   }
@@ -305,8 +305,7 @@ export const styles = `
     max-width: 820px; width: 100%; margin: 0 auto; padding: 24px 32px 32px;
     animation: fadeIn 0.3s cubic-bezier(0.2, 0, 0, 1);
     flex: 1 1 auto; display: flex; flex-direction: column;
-    height: 100%;
-    min-height: 0;
+    min-height: 100%;
   }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -362,9 +361,6 @@ export const styles = `
     letter-spacing: 0.01em;
     padding: 4px 0 0; border-radius: 0;
     background: transparent; border: 0;
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
   }
 
   /* ── HTML email "paper card" ── */
@@ -372,11 +368,11 @@ export const styles = `
     position: relative;
     display: flex;
     flex-direction: column;
-    min-height: 0;
-    flex: 1 1 auto;
+    min-height: 160px;
+    flex: 0 0 auto;
     background: transparent;
     border-radius: 0;
-    overflow: hidden;
+    overflow: visible;
     border: 0;
     box-shadow: none;
     transition: box-shadow 0.3s ease, border-color 0.3s ease;
@@ -419,9 +415,8 @@ export const styles = `
     transition: opacity 0.18s ease;
     position: relative;
     z-index: 1;
-    flex: 1 1 auto;
-    min-height: 0;
-    height: 100%;
+    min-height: 160px;
+    height: 160px;
   }
   .email-iframe.ready {
     opacity: 1;

@@ -415,19 +415,13 @@ function buildEmailSrcdoc(rawHtml) {
   var base = [
     'html,body{margin:0;padding:0;background:#f5f3f0;color:#2b2a27;overflow:visible;}',
     'body{padding:32px 36px;font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue","Noto Sans SC","PingFang SC",sans-serif;word-break:break-word;}',
-    'img{max-width:100%;height:auto;border-radius:4px;}',
+    'img,video,canvas{max-width:100%;height:auto;}',
     'p{margin:10px 0;}p:first-child{margin-top:0;}p:last-child{margin-bottom:0;}',
     'ul,ol{padding-left:24px;margin:10px 0;}li{margin:4px 0;}',
-    'table{border-collapse:collapse;max-width:100%;margin:14px 0;}',
-    'td,th{border:0;padding:8px 12px;}',
+    'table{max-width:100%;}',
     'pre code{background:transparent;padding:0;border-radius:0;}',
     'h1:first-child,h2:first-child,h3:first-child,h4:first-child{margin-top:0;}',
     'h1{font-size:22px;}h2{font-size:18px;}h3{font-size:16px;}',
-    'table,tbody,thead,tfoot,tr,td,th,div,section,article{border:0!important;outline:0!important;box-shadow:none!important;}',
-    '[border]{border:0!important;}',
-    '[style*="border"]{border:0!important;}',
-    '[style*="outline"]{outline:0!important;}',
-    '[style*="box-shadow"]{box-shadow:none!important;}',
     'pre{overflow-x:auto;padding:14px 16px;background:#f5f1ea;border:0;border-radius:6px;font:13px/1.55 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;white-space:pre-wrap;word-break:break-word;}',
     'code{background:#f0ebe1;padding:2px 6px;border-radius:4px;font:13px/1.5 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;}',
     'blockquote{border:0;margin:16px 0;padding:6px 16px;color:#5d574d;background:rgba(200,149,108,0.06);border-radius:6px;}',
@@ -455,17 +449,50 @@ function mountEmailIframe(cardId, srcdoc) {
     iframe.className = 'email-iframe';
     iframe.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox allow-same-origin');
     iframe.setAttribute('referrerpolicy', 'no-referrer');
-    iframe.setAttribute('scrolling', 'auto');
+    iframe.setAttribute('scrolling', 'no');
     iframe.srcdoc = srcdoc;
 
     var revealed = false;
+    var measureHeight = function() {
+      var doc = iframe.contentDocument;
+      if (!doc) return 0;
+      var values = [];
+      var add = function(v) {
+        if (v && isFinite(v)) values.push(v);
+      };
+      var root = doc.documentElement;
+      var body = doc.body;
+      if (root) {
+        add(root.scrollHeight);
+        add(root.offsetHeight);
+        add(root.clientHeight);
+        add(root.getBoundingClientRect().height);
+      }
+      if (body) {
+        add(body.scrollHeight);
+        add(body.offsetHeight);
+        add(body.clientHeight);
+        var bodyRect = body.getBoundingClientRect();
+        add(bodyRect.height);
+        var maxBottom = bodyRect.bottom;
+        var nodes = body.querySelectorAll('*');
+        for (var i = 0; i < nodes.length; i++) {
+          var rect = nodes[i].getBoundingClientRect();
+          if (rect.width || rect.height) maxBottom = Math.max(maxBottom, rect.bottom);
+        }
+        add(maxBottom - Math.min(bodyRect.top, 0));
+      }
+      return values.length ? Math.ceil(Math.max.apply(Math, values)) : 0;
+    };
     var resize = function() {
-      iframe.style.height = '100%';
+      var h = measureHeight();
+      if (h > 0) iframe.style.height = (h + 2) + 'px';
     };
     var reveal = function() {
       if (revealed) return;
       var doc = iframe.contentDocument;
       if (!doc || !doc.documentElement) return;
+      if (measureHeight() === 0) return;
       resize();
       iframe.classList.add('ready');
       card.classList.add('iframe-ready');
@@ -477,13 +504,25 @@ function mountEmailIframe(cardId, srcdoc) {
       var doc = iframe.contentDocument;
       if (!doc) return;
       wired = true;
+      if (typeof ResizeObserver !== 'undefined') {
+        var ro = new ResizeObserver(function() { resize(); reveal(); });
+        ro.observe(doc.documentElement);
+        if (doc.body) ro.observe(doc.body);
+      }
       var imgs = doc.querySelectorAll('img');
       for (var i = 0; i < imgs.length; i++) {
         var img = imgs[i];
-        if (!img.complete) img.addEventListener('load', reveal, { once: true });
-        img.addEventListener('error', reveal, { once: true });
+        if (!img.complete) img.addEventListener('load', resize, { once: true });
+        img.addEventListener('error', resize, { once: true });
       }
     };
+    var settleChecks = 0;
+    var settleTimer = setInterval(function() {
+      resize();
+      reveal();
+      settleChecks++;
+      if (settleChecks >= 20) clearInterval(settleTimer);
+    }, 250);
 
     setTimeout(function() {
       var doc = iframe.contentDocument;
