@@ -133,6 +133,15 @@ function refreshDomainCounts() {
     .catch(function() {});
 }
 
+function updateEmailReadState(id, isRead) {
+  for (var i = 0; i < state.emails.length; i++) {
+    if (state.emails[i].id === id) {
+      state.emails[i].is_read = isRead ? 1 : 0;
+      return;
+    }
+  }
+}
+
 document.querySelector('.domain-list').addEventListener('click', function(e) {
   var rcptItem = e.target.closest('.rcpt-item');
   if (rcptItem) {
@@ -279,6 +288,7 @@ document.getElementById('email-list').addEventListener('click', function(e) {
             readBtn.dataset.read = '0';
             readBtn.title = '标记已读';
           }
+          updateEmailReadState(rid, nowRead);
           refreshDomainCounts();
         }
       })
@@ -300,6 +310,7 @@ document.getElementById('email-list').addEventListener('click', function(e) {
   item.classList.remove('unread');
   var btn = item.querySelector('.email-btn-read');
   if (btn) { btn.textContent = '○'; btn.dataset.read = '1'; btn.title = '标记未读'; }
+  updateEmailReadState(item.dataset.id, true);
   loadEmailDetail(item.dataset.id);
 });
 
@@ -523,7 +534,10 @@ function loadEmailDetail(id) {
         mountEmailIframe(iframeCardId, iframeSrcdoc);
       }
       fetch('/api/emails/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_read: true }) })
-        .then(refreshDomainCounts)
+        .then(function() {
+          updateEmailReadState(id, true);
+          refreshDomainCounts();
+        })
         .catch(function() {});
     })
     .catch(function() {
