@@ -23,13 +23,6 @@ window.fetch = function(url, opts) {
   });
 };
 
-var currentTheme = localStorage.getItem('theme') || 'dark';
-function applyTheme(t) {
-  document.documentElement.className = t;
-  localStorage.setItem('theme', t);
-}
-applyTheme(currentTheme);
-
 fetch('/api/domains')
   .then(function(r) { return r.json(); })
   .then(function(domains) {
@@ -40,12 +33,6 @@ fetch('/api/domains')
     document.getElementById('total-count').textContent = domains.length + ' 个域名 / ' + total + ' 封邮件';
   })
   .catch(function() {});
-
-document.getElementById('theme-toggle').addEventListener('click', function() {
-  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  applyTheme(currentTheme);
-  if (state.selectedId) loadEmailDetail(state.selectedId);
-});
 
 updateBreadcrumb();
 loadHomeEmails();
@@ -375,7 +362,6 @@ function loadEmailDetail(id) {
       var isHtmlText = hasText && email.body_text.trim().charAt(0) === '<';
       var body;
       var iframeCardId = null;
-      var isDark = currentTheme === 'dark';
       var rawHtmlSrc = hasHtml ? email.body_html : (isHtmlText ? email.body_text : null);
 
       if (hasHtml || isHtmlText) {
@@ -387,12 +373,6 @@ function loadEmailDetail(id) {
         body = '<div class="email-list-empty">此邮件没有正文内容</div>';
       }
 
-      var toggleBtn = (iframeCardId && isDark)
-        ? '<button class="email-style-toggle" id="email-style-toggle" data-original="0">' +
-            '<span class="toggle-icon">☀</span><span>查看原始样式</span>' +
-          '</button>'
-        : '';
-
       preview.innerHTML =
         '<div class="preview-content">' +
           '<div class="preview-header">' +
@@ -401,7 +381,6 @@ function loadEmailDetail(id) {
               '<span class="from">' + esc(email.mail_from) + '</span>' +
               '<span class="arrow">→</span>' +
               '<span>' + esc(email.rcpt_to) + '</span>' +
-              toggleBtn +
             '</div>' +
             '<div class="preview-date">' + new Date(email.date).toLocaleString('zh-CN') + '</div>' +
           '</div>' +
@@ -409,26 +388,8 @@ function loadEmailDetail(id) {
         '</div>';
 
       if (iframeCardId && rawHtmlSrc) {
-        var iframeSrcdoc = buildEmailSrcdoc(rawHtmlSrc, isDark);
+        var iframeSrcdoc = buildEmailSrcdoc(rawHtmlSrc);
         mountEmailIframe(iframeCardId, iframeSrcdoc);
-
-        var toggleEl = document.getElementById('email-style-toggle');
-        if (toggleEl) {
-          toggleEl.addEventListener('click', function() {
-            var isOriginal = toggleEl.dataset.original === '1';
-            var newDark = isOriginal;
-            toggleEl.dataset.original = isOriginal ? '0' : '1';
-            toggleEl.querySelector('.toggle-icon').textContent = isOriginal ? '\\u2600' : '\\u263E';
-            toggleEl.querySelector('.toggle-icon').nextElementSibling.textContent = isOriginal ? '查看原始样式' : '暗色阅读模式';
-            var card = document.getElementById(iframeCardId);
-            if (card) {
-              card.innerHTML = '';
-              card.classList.remove('iframe-ready');
-            }
-            var newSrcdoc = buildEmailSrcdoc(rawHtmlSrc, newDark);
-            mountEmailIframe(iframeCardId, newSrcdoc);
-          });
-        }
       }
       fetch('/api/emails/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_read: true }) });
     })
@@ -450,8 +411,9 @@ function formatTime(dateStr) {
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-function buildEmailSrcdoc(rawHtml, dark) {
+function buildEmailSrcdoc(rawHtml) {
   var base = [
+    'html,body{margin:0;padding:0;background:#f5f3f0;color:#2b2a27;overflow:visible;}',
     'body{padding:32px 36px;font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue","Noto Sans SC","PingFang SC",sans-serif;word-break:break-word;}',
     'img{max-width:100%;height:auto;border-radius:4px;}',
     'p{margin:10px 0;}p:first-child{margin-top:0;}p:last-child{margin-bottom:0;}',
@@ -465,44 +427,23 @@ function buildEmailSrcdoc(rawHtml, dark) {
     '[border]{border:0!important;}',
     '[style*="border"]{border:0!important;}',
     '[style*="outline"]{outline:0!important;}',
-    '[style*="box-shadow"]{box-shadow:none!important;}'
+    '[style*="box-shadow"]{box-shadow:none!important;}',
+    'pre{overflow-x:auto;padding:14px 16px;background:#f5f1ea;border:0;border-radius:6px;font:13px/1.55 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;white-space:pre-wrap;word-break:break-word;}',
+    'code{background:#f0ebe1;padding:2px 6px;border-radius:4px;font:13px/1.5 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;}',
+    'blockquote{border:0;margin:16px 0;padding:6px 16px;color:#5d574d;background:rgba(200,149,108,0.06);border-radius:6px;}',
+    'th{background:#f5f1ea;font-weight:600;}',
+    'a{color:#8a6340;text-decoration:none;border-bottom:0;}',
+    'a:hover{color:#6f4f33;}',
+    'h1,h2,h3,h4,h5,h6{color:#1a1917;margin:18px 0 8px;line-height:1.35;letter-spacing:0.005em;}',
+    'hr{border:0;height:1px;background:rgba(43,42,39,0.08);margin:20px 0;}'
   ].join('');
-
-  var theme;
-  if (dark) {
-    theme = [
-      'html,body{margin:0;padding:0;background:#1a1a1e;color:#d8d5d0;overflow:visible;}',
-      'pre{overflow-x:auto;padding:14px 16px;background:#333338;border:0;border-radius:6px;font:13px/1.55 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#c8c5c0;white-space:pre-wrap;word-break:break-word;}',
-      'code{background:#333338;padding:2px 6px;border-radius:4px;font:13px/1.5 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#c8c5c0;}',
-      'blockquote{border:0;margin:16px 0;padding:6px 16px;color:#a09d98;background:rgba(200,149,108,0.08);border-radius:6px;}',
-      'th{background:#333338;font-weight:600;color:#d8d5d0;}',
-      'a{color:#8ab4f8;text-decoration:none;border-bottom:0;}',
-      'a:hover{color:#aecbfa;}',
-      'h1,h2,h3,h4,h5,h6{color:#e8e6e3;margin:18px 0 8px;line-height:1.35;letter-spacing:0.005em;}',
-      'hr{border:0;height:1px;background:rgba(255,255,255,0.1);margin:20px 0;}',
-      '*{color-scheme:dark;}'
-    ].join('');
-  } else {
-    theme = [
-      'html,body{margin:0;padding:0;background:#f5f3f0;color:#2b2a27;overflow:visible;}',
-      'pre{overflow-x:auto;padding:14px 16px;background:#f5f1ea;border:0;border-radius:6px;font:13px/1.55 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;white-space:pre-wrap;word-break:break-word;}',
-      'code{background:#f0ebe1;padding:2px 6px;border-radius:4px;font:13px/1.5 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:#3a342a;}',
-      'blockquote{border:0;margin:16px 0;padding:6px 16px;color:#5d574d;background:rgba(200,149,108,0.06);border-radius:6px;}',
-      'th{background:#f5f1ea;font-weight:600;}',
-      'a{color:#8a6340;text-decoration:none;border-bottom:0;}',
-      'a:hover{color:#6f4f33;}',
-      'h1,h2,h3,h4,h5,h6{color:#1a1917;margin:18px 0 8px;line-height:1.35;letter-spacing:0.005em;}',
-      'hr{border:0;height:1px;background:rgba(43,42,39,0.08);margin:20px 0;}'
-    ].join('');
-  }
-  var css = theme + base;
   var csp = "default-src 'none'; img-src data: cid: https: http:; style-src 'unsafe-inline'; font-src data: https:; media-src data:; base-uri 'none';";
   return '<!doctype html><html><head>'
     + '<meta charset="utf-8">'
     + '<meta http-equiv="Content-Security-Policy" content="' + csp + '">'
     + '<meta name="viewport" content="width=device-width,initial-scale=1">'
     + '<base target="_blank">'
-    + '<style>' + css + '</style>'
+    + '<style>' + base + '</style>'
     + '</head><body>' + rawHtml + '</body></html>';
 }
 
