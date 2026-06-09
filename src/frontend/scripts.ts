@@ -43,7 +43,11 @@ function searchMails() {
   document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
   document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
   if (q) {
+    state.domain = '';
+    state.rcptUser = '';
     state.view = 'home';
+    document.querySelectorAll('.rcpt-item').forEach(function(el) { el.classList.remove('active'); });
+    document.querySelectorAll('.domain-tree').forEach(function(el) { el.classList.remove('active'); });
     updateBreadcrumb();
     loadEmails(true);
   } else if (state.domain) {
@@ -61,9 +65,7 @@ function toggleSearchClear() {
   var hasValue = document.getElementById('search').value.length > 0;
   btn.classList.toggle('visible', hasValue);
 }
-var searchInitialized = false;
 document.getElementById('search').addEventListener('input', function() {
-  if (!searchInitialized) { searchInitialized = true; return; }
   toggleSearchClear();
   clearTimeout(searchTimer);
   searchTimer = setTimeout(function() { searchMails(); }, 300);
