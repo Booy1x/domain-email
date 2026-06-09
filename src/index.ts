@@ -160,7 +160,11 @@ app.get('/api/emails/since', async (c) => {
 
 // List deleted emails
 app.get('/api/emails/deleted', async (c) => {
-  const result = await listDeletedEmails(c.env.INBOX_DB, { limit: 100 });
+  const domain = c.req.query('domain');
+  const q = c.req.query('q');
+  const cursor = c.req.query('cursor');
+  const limit = parseInt(c.req.query('limit') || '50', 10);
+  const result = await listDeletedEmails(c.env.INBOX_DB, { domain, q, cursor, limit });
   return c.json(result);
 });
 

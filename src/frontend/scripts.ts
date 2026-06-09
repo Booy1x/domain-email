@@ -6,6 +6,9 @@ var state = {
 var allDomains = [];
 var listRequestSeq = 0;
 var detailRequestSeq = 0;
+var trashRequestSeq = 0;
+var previousInboxState = null;
+var trashState = { emails: [], cursor: null, loading: false, hasMore: true };
 
 var originalFetch = window.fetch;
 window.fetch = function(url, opts) {
@@ -41,7 +44,7 @@ function searchMails() {
   if (q) {
     state.domain = '';
     state.rcptUser = '';
-    state.view = 'home';
+    state.view = 'search';
     document.querySelectorAll('.rcpt-item').forEach(function(el) { el.classList.remove('active'); });
     document.querySelectorAll('.domain-tree').forEach(function(el) { el.classList.remove('active'); });
     updateBreadcrumb();
@@ -130,6 +133,15 @@ function refreshDomainCounts() {
     .catch(function() {});
 }
 
+function updateEmailReadState(id, isRead) {
+  for (var i = 0; i < state.emails.length; i++) {
+    if (state.emails[i].id === id) {
+      state.emails[i].is_read = isRead ? 1 : 0;
+      return;
+    }
+  }
+}
+
 document.querySelector('.domain-list').addEventListener('click', function(e) {
   var rcptItem = e.target.closest('.rcpt-item');
   if (rcptItem) {
@@ -191,6 +203,10 @@ function updateBreadcrumb() {
   var html = '';
   if (state.view === 'home') {
     html = '';
+  } else if (state.view === 'search') {
+    html = '<span class="bc-label">搜索结果</span>';
+  } else if (state.view === 'trash') {
+    html = '<span class="bc-label">回收站</span>';
   } else if (state.view === 'domain') {
     html = '<span class="bc-domain">' + esc(state.domain) + '</span>';
   } else if (state.view === 'rcpt') {
@@ -203,27 +219,17 @@ function updateBreadcrumb() {
 }
 
 function loadHomeEmails() {
-  if (state.loading) return;
-  var requestSeq = ++listRequestSeq;
-  state.loading = true;
+  state.domain = '';
+  state.rcptUser = '';
+  state.cursor = null;
+  state.emails = [];
+  state.hasMore = true;
+  state.selectedId = null;
+  state.totalLoaded = 0;
+  state.view = 'home';
+  updateBreadcrumb();
   document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
-  fetch('/api/emails/recent?limit=10')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (requestSeq !== listRequestSeq) return;
-      state.emails = data.emails || [];
-      state.totalLoaded = state.emails.length;
-      state.view = 'home';
-      updateBreadcrumb();
-      renderEmailList();
-    })
-    .catch(function() {
-      if (requestSeq !== listRequestSeq) return;
-      document.getElementById('email-list').innerHTML = '<div class="error-msg">加载失败</div>';
-    })
-    .finally(function() {
-      if (requestSeq === listRequestSeq) state.loading = false;
-    });
+  loadEmails(true);
 }
 
 document.getElementById('email-list').addEventListener('click', function(e) {
@@ -233,7 +239,7 @@ document.getElementById('email-list').addEventListener('click', function(e) {
     var rid = restoreBtn.dataset.id;
     fetch('/api/emails/' + rid + '/restore', { method: 'POST' })
       .then(function() {
-        loadTrash();
+        loadTrash(true);
         refreshDomainCounts();
       });
     return;
@@ -282,6 +288,7 @@ document.getElementById('email-list').addEventListener('click', function(e) {
             readBtn.dataset.read = '0';
             readBtn.title = '标记已读';
           }
+          updateEmailReadState(rid, nowRead);
           refreshDomainCounts();
         }
       })
@@ -303,27 +310,50 @@ document.getElementById('email-list').addEventListener('click', function(e) {
   item.classList.remove('unread');
   var btn = item.querySelector('.email-btn-read');
   if (btn) { btn.textContent = '○'; btn.dataset.read = '1'; btn.title = '标记未读'; }
+  updateEmailReadState(item.dataset.id, true);
   loadEmailDetail(item.dataset.id);
 });
 
 document.getElementById('email-list').addEventListener('scroll', function(e) {
   var el = e.target;
+  if (state.view === 'trash') {
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200 && trashState.hasMore && !trashState.loading) loadTrash();
+    return;
+  }
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200 && state.hasMore && !state.loading) loadEmails();
 });
 
 var trashMode = false;
 document.getElementById('btn-trash').addEventListener('click', function() {
+  previousInboxState = {
+    domain: state.domain,
+    rcptUser: state.rcptUser,
+    view: state.view,
+    search: document.getElementById('search').value
+  };
   trashMode = true;
+  state.view = 'trash';
+  state.loading = false;
+  state.selectedId = null;
+  listRequestSeq++;
+  detailRequestSeq++;
   document.getElementById('btn-trash').style.display = 'none';
   document.getElementById('btn-back').style.display = 'flex';
   document.getElementById('search').style.display = 'none';
   document.getElementById('email-count').style.display = '';
   document.querySelector('.domain-list').style.opacity = '0.3';
   document.querySelector('.domain-list').style.pointerEvents = 'none';
-  loadTrash();
+  document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
+  updateBreadcrumb();
+  loadTrash(true);
 });
 document.getElementById('btn-back').addEventListener('click', function() {
+  var prev = previousInboxState;
+  previousInboxState = null;
   trashMode = false;
+  state.loading = false;
+  listRequestSeq++;
+  detailRequestSeq++;
   document.getElementById('btn-trash').style.display = 'flex';
   document.getElementById('btn-back').style.display = 'none';
   document.getElementById('search').style.display = '';
@@ -332,6 +362,14 @@ document.getElementById('btn-back').addEventListener('click', function() {
   document.querySelector('.domain-list').style.pointerEvents = '';
   state.cursor = null; state.emails = []; state.hasMore = true; state.selectedId = null; state.totalLoaded = 0;
   document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
+  if (prev) {
+    state.domain = prev.domain || '';
+    state.rcptUser = prev.rcptUser || '';
+    state.view = prev.view || 'home';
+    document.getElementById('search').value = prev.search || '';
+    toggleSearchClear();
+  }
+  updateBreadcrumb();
   if (state.view === 'home') {
     loadHomeEmails();
   } else {
@@ -339,34 +377,57 @@ document.getElementById('btn-back').addEventListener('click', function() {
   }
 });
 
-function loadTrash() {
-  document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
-  fetch('/api/emails/deleted?limit=50')
+function loadTrash(reset) {
+  if ((trashState.loading || !trashState.hasMore) && !reset) return;
+  var requestSeq = ++trashRequestSeq;
+  trashState.loading = true;
+  if (reset) {
+    trashState.emails = [];
+    trashState.cursor = null;
+    trashState.hasMore = true;
+    document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
+  }
+  var params = new URLSearchParams({ limit: '50' });
+  if (trashState.cursor) params.set('cursor', trashState.cursor);
+  fetch('/api/emails/deleted?' + params)
     .then(function(r) { return r.json(); })
     .then(function(data) {
+      if (requestSeq !== trashRequestSeq || state.view !== 'trash') return;
       var emails = data.emails || [];
-      document.getElementById('email-count').textContent = emails.length + ' 封已删除';
-      if (emails.length === 0) {
-        document.getElementById('email-list').innerHTML = '<div class="email-list-empty">回收站为空</div>';
-        return;
-      }
-      document.getElementById('email-list').innerHTML = emails.map(function(e) {
-        var timeStr = formatTime(e.date);
-        return '<div class="email-card" data-id="' + e.id + '">' +
-          '<div class="email-card-top">' +
-            '<span class="email-from">' + esc(e.mail_from) + '</span>' +
-            '<span class="email-time">' + timeStr + '</span>' +
-          '</div>' +
-          '<div class="email-subject">' + esc(e.subject || '(无主题)') + '</div>' +
-          '<div class="email-actions" style="display:flex;">' +
-            '<button class="email-btn email-btn-restore" data-id="' + e.id + '" title="恢复">↩</button>' +
-          '</div>' +
-        '</div>';
-      }).join('');
+      if (reset) trashState.emails = emails;
+      else trashState.emails.push.apply(trashState.emails, emails);
+      trashState.cursor = data.cursor;
+      trashState.hasMore = !!data.cursor;
+      renderTrashList();
     })
     .catch(function() {
+      if (requestSeq !== trashRequestSeq || state.view !== 'trash') return;
       document.getElementById('email-list').innerHTML = '<div class="error-msg">加载失败</div>';
+    })
+    .finally(function() {
+      if (requestSeq === trashRequestSeq) trashState.loading = false;
     });
+}
+
+function renderTrashList() {
+  document.getElementById('email-count').textContent = trashState.emails.length + (trashState.hasMore ? '+' : '') + ' 封已删除';
+  if (trashState.emails.length === 0) {
+    document.getElementById('email-list').innerHTML = '<div class="email-list-empty">回收站为空</div>';
+    return;
+  }
+  document.getElementById('email-list').innerHTML = trashState.emails.map(function(e) {
+    var timeStr = formatTime(e.date);
+    return '<div class="email-card" data-id="' + e.id + '">' +
+      '<div class="email-card-top">' +
+        '<span class="email-from">' + esc(e.mail_from) + '</span>' +
+        '<span class="email-time">' + timeStr + '</span>' +
+      '</div>' +
+      '<div class="email-subject">' + esc(e.subject || '(无主题)') + '</div>' +
+      '<div class="email-actions" style="display:flex;">' +
+        '<button class="email-btn email-btn-restore" data-id="' + e.id + '" title="恢复">↩</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
 }
 
 function loadEmails(reset) {
@@ -473,7 +534,10 @@ function loadEmailDetail(id) {
         mountEmailIframe(iframeCardId, iframeSrcdoc);
       }
       fetch('/api/emails/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_read: true }) })
-        .then(refreshDomainCounts)
+        .then(function() {
+          updateEmailReadState(id, true);
+          refreshDomainCounts();
+        })
         .catch(function() {});
     })
     .catch(function() {
