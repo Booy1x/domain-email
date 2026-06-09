@@ -462,8 +462,11 @@ function loadEmailDetail(id) {
             '</div>' +
             '<div class="preview-date">' + new Date(email.date).toLocaleString('zh-CN') + '</div>' +
           '</div>' +
+          '<div class="attachment-list" id="attachment-list-' + id + '"></div>' +
           '<div class="preview-body">' + body + '</div>' +
         '</div>';
+
+      loadEmailAttachments(id, requestSeq);
 
       if (iframeCardId && rawHtmlSrc) {
         var iframeSrcdoc = buildEmailSrcdoc(rawHtmlSrc);
@@ -477,6 +480,38 @@ function loadEmailDetail(id) {
       if (requestSeq !== detailRequestSeq) return;
       preview.innerHTML = '<div class="error-msg">加载失败</div>';
     });
+}
+
+function loadEmailAttachments(id, requestSeq) {
+  fetch('/api/emails/' + id + '/attachments')
+    .then(function(r) { return r.json(); })
+    .then(function(attachments) {
+      if (requestSeq !== detailRequestSeq) return;
+      var el = document.getElementById('attachment-list-' + id);
+      if (!el || !attachments || attachments.length === 0) return;
+      el.innerHTML = '<div class="attachment-title">附件</div>' +
+        attachments.map(function(att) {
+          var href = '/api/attachments/' + encodeURIComponent(att.r2_key);
+          return '<a class="attachment-item" href="' + href + '" target="_blank" rel="noopener noreferrer">' +
+            '<span class="attachment-icon">📎</span>' +
+            '<span class="attachment-name">' + esc(att.filename || '未命名附件') + '</span>' +
+            '<span class="attachment-size">' + esc(formatBytes(att.size || 0)) + '</span>' +
+          '</a>';
+        }).join('');
+    })
+    .catch(function() {});
+}
+
+function formatBytes(size) {
+  if (!size) return '0 B';
+  var units = ['B', 'KB', 'MB', 'GB'];
+  var value = size;
+  var unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value = value / 1024;
+    unit++;
+  }
+  return (unit === 0 ? value : value.toFixed(value >= 10 ? 0 : 1)) + ' ' + units[unit];
 }
 
 function formatTime(dateStr) {

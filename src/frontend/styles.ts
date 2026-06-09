@@ -348,6 +348,45 @@ export const styles = `
     background: var(--bg-surface); border: 1px solid var(--border);
   }
 
+  .attachment-list {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin: -6px 0 18px;
+    flex: 0 0 auto;
+  }
+  .attachment-list:empty { display: none; }
+  .attachment-title {
+    width: 100%;
+    font-size: 11px; color: var(--text-3);
+  }
+  .attachment-item {
+    display: inline-flex; align-items: center; gap: 8px;
+    max-width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-surface);
+    color: var(--text-2);
+    text-decoration: none;
+    font-size: 12px;
+  }
+  .attachment-item:hover {
+    border-color: var(--border-strong);
+    color: var(--text-1);
+  }
+  .attachment-icon { flex: 0 0 auto; }
+  .attachment-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .attachment-size {
+    flex: 0 0 auto;
+    color: var(--text-3);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+  }
+
   .preview-body {
     padding-top: 4px;
     flex: 1 1 auto;
