@@ -36,6 +36,7 @@ import {
   purgeDeleted,
   getDomainsWithRecipients,
   searchEmails,
+  checkRateLimit,
 } from './db';
 
 // ═══════════════════════════════════════════════════════════════
@@ -246,5 +247,41 @@ describe('searchEmails', () => {
     await searchEmails(db, { q: 'test', rcptUser: 'john', limit: 50 });
     const sql = (db.prepare as any).mock.calls[0][0];
     expect(sql).toContain('SUBSTR(e.rcpt_to');
+  });
+});
+
+describe('checkRateLimit', () => {
+  it('returns true when count is below limit', async () => {
+    const db = createMockD1({ cnt: 5 } as any);
+    const result = await checkRateLimit(db, 10);
+    expect(result).toBe(true);
+  });
+
+  it('returns false when count meets or exceeds limit', async () => {
+    const db = createMockD1({ cnt: 10 } as any);
+    const result = await checkRateLimit(db, 10);
+    expect(result).toBe(false);
+  });
+
+  it('returns true when maxPerHour is 0 (disabled)', async () => {
+    const db = createMockD1({ cnt: 100 } as any);
+    const result = await checkRateLimit(db, 0);
+    expect(result).toBe(true);
+  });
+
+  it('returns true when maxPerHour is negative (disabled)', async () => {
+    const db = createMockD1({ cnt: 100 } as any);
+    const result = await checkRateLimit(db, -1);
+    expect(result).toBe(true);
+  });
+
+  it('returns true when query fails (fail-open)', async () => {
+    const mockStmt = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockRejectedValue(new Error('DB error')),
+    } as any;
+    const db = { prepare: vi.fn().mockReturnValue(mockStmt) } as any as D1Database;
+    const result = await checkRateLimit(db, 10);
+    expect(result).toBe(true);
   });
 });

@@ -285,6 +285,33 @@ export function getDomains(db: D1Database): Promise<D1Result<{ domain: string; c
   return db.prepare(`SELECT domain, COUNT(*) as count FROM emails WHERE deleted_at IS NULL GROUP BY domain ORDER BY domain`).all();
 }
 
+export async function checkSenderRateLimit(
+  db: D1Database,
+  senderDomain: string,
+  windowMinutes: number,
+  maxEmails: number
+): Promise<boolean> {
+  const since = new Date(Date.now() - windowMinutes * 60 * 1000).toISOString();
+  const result = await db
+    .prepare(`SELECT COUNT(*) as cnt FROM emails WHERE mail_from LIKE ? AND created_at > ?`)
+    .bind(`%@${senderDomain}`, since)
+    .first<{ cnt: number }>();
+  return (result?.cnt || 0) >= maxEmails;
+}
+
+export async function checkRateLimit(db: D1Database, maxPerHour: number): Promise<boolean> {
+  if (maxPerHour <= 0) return true;
+  try {
+    const result = await db.prepare(
+      `SELECT COUNT(*) as cnt FROM emails WHERE cast(strftime('%s', created_at) as integer) > cast(strftime('%s', 'now', '-1 hour') as integer)`
+    ).first<{ cnt: number }>();
+    return !result || result.cnt < maxPerHour;
+  } catch (e) {
+    console.error('checkRateLimit failed, allowing email:', e);
+    return true;
+  }
+}
+
 export async function listEmailsSince(
   db: D1Database,
   ts: string

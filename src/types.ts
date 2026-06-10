@@ -32,4 +32,5 @@ export interface Env {
   INBOX_DB: D1Database;
   INBOX_BUCKET: R2Bucket;
   CORS_ORIGIN?: string;
+  MAX_EMAILS_PER_HOUR?: string;
 }

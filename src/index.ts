@@ -7,7 +7,8 @@ import type { Env, EmailRow, AttachmentRow } from './types';
 import {
   insertEmail, insertAttachment, listEmails, listDeletedEmails, getEmail,
   getAttachments, markRead, markFlagged, deleteEmail, restoreEmail, purgeDeleted,
-  getDomains, getDomainsWithRecipients, searchEmails, listEmailsSince
+  getDomains, getDomainsWithRecipients, searchEmails, listEmailsSince,
+  checkRateLimit,
 } from './db';
 
 export function sanitizeEmailRow(email: EmailRow): EmailRow {
@@ -50,6 +51,16 @@ async function handleEmail(
   message: ForwardableEmailMessage,
   env: Env,
 ): Promise<void> {
+  // Global rate limit — reject early before any I/O or parsing
+  const maxPerHour = parseInt(env.MAX_EMAILS_PER_HOUR || '0', 10);
+  if (maxPerHour > 0) {
+    const allowed = await checkRateLimit(env.INBOX_DB, maxPerHour);
+    if (!allowed) {
+      console.log('Rate limit exceeded, discarding email from', message.from);
+      return;
+    }
+  }
+
   // Buffer raw stream first (can only be consumed once)
   const rawBuffer = await streamToBuffer(message.raw);
 
