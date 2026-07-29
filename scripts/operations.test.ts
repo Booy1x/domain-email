@@ -9,12 +9,21 @@ afterEach(() => {
   while (temporary.length) rmSync(temporary.pop()!, { recursive: true, force: true });
 });
 
-function sandbox(): { directory: string; log: string; capture: string } {
+function sandbox(schema: 'modern' | 'legacy' = 'modern'): { directory: string; log: string; capture: string } {
   const directory = mkdtempSync(join(tmpdir(), 'domain-email-ops-test-'));
   temporary.push(directory);
   const log = join(directory, 'npx.log');
   const capture = join(directory, 'restore.sql');
   const fake = join(directory, 'npx');
+  const schemaRows = schema === 'modern'
+    ? '[{"name":"cleanup_outbox"},{"name":"email_activation_events"},{"name":"ingestion_registry"}]'
+    : '[]';
+  const emailRows = schema === 'modern'
+    ? '[{"id":"email-id","domain":"example.com","mail_from":"redacted","rcpt_to":"redacted","subject":"s","body_text":"b","body_html":"","date":"2026-01-01","r2_key":"raw/email-id.g2.eml","is_read":1,"is_flagged":0,"is_spam":0,"created_at":"2026-01-01","deleted_at":"2026-01-02","ingest_key":"email-id","storage_state":"active","raw_size":1,"body_text_size":1,"body_html_size":0,"attachment_count":0,"attachment_total_size":0,"activation_seq":9,"storage_generation":2}]'
+    : '[{"id":"legacy-id","domain":"example.com","mail_from":"redacted","rcpt_to":"redacted","subject":"legacy","body_text":"正文","body_html":"","date":"2025-01-01","r2_key":"raw/legacy.eml","is_read":0,"is_flagged":0,"is_spam":0,"created_at":"2025-01-01","deleted_at":null}]';
+  const attachmentRows = schema === 'modern'
+    ? '[]'
+    : '[{"id":"legacy-att","email_id":"legacy-id","filename":"a.txt","content_type":"text/plain","size":3,"r2_key":"attachments/legacy-att","created_at":"2025-01-01"}]';
   writeFileSync(fake, `#!/bin/sh
 printf '%s\\n' "$*" >> "$FAKE_NPX_LOG"
 previous=''
@@ -23,8 +32,9 @@ for argument in "$@"; do
   previous="$argument"
 done
 case "$*" in
-  *"SELECT * FROM emails"*) printf '%s' '[{"results":[{"id":"email-id","domain":"example.com","mail_from":"redacted","rcpt_to":"redacted","subject":"s","body_text":"b","body_html":"","date":"2026-01-01","r2_key":"raw/email-id.g2.eml","is_read":1,"is_flagged":0,"is_spam":0,"created_at":"2026-01-01","deleted_at":"2026-01-02","ingest_key":"email-id","storage_state":"active","raw_size":1,"body_text_size":1,"body_html_size":0,"attachment_count":0,"attachment_total_size":0,"activation_seq":9,"storage_generation":2}]}]' ;;
-  *"SELECT * FROM attachments"*) printf '%s' '[{"results":[]}]' ;;
+  *"FROM sqlite_schema"*) printf '%s' '[{"results":${schemaRows}}]' ;;
+  *"SELECT * FROM emails"*) printf '%s' '[{"results":${emailRows}}]' ;;
+  *"SELECT * FROM attachments"*) printf '%s' '[{"results":${attachmentRows}}]' ;;
   *"SELECT * FROM cleanup_outbox"*) printf '%s' '[{"results":[{"id":"outbox-id","object_key":"raw/old-email.eml","object_kind":"raw","email_id":"old-email","attempts":1,"next_attempt_at":"2026-01-01","last_error":"delete_failed","created_at":"2026-01-01","completed_at":"2026-01-02","storage_generation":1,"claim_token":null,"claim_expires_at":null}]}]' ;;
   *"SELECT * FROM ingestion_registry"*) printf '%s' '[{"results":[{"ingest_key":"email-id","email_id":"email-id","storage_generation":2,"state":"active","claim_token":null,"claim_expires_at":null,"updated_at":"2026-01-01"}]}]' ;;
   *"SELECT * FROM email_activation_events"*) printf '%s' '[{"results":[{"seq":9,"email_id":"email-id","storage_generation":2,"activated_at":"2026-01-01"}]}]' ;;
@@ -90,7 +100,7 @@ describe('production backup and restore safety', () => {
     const result = runScript('scripts/backup-prod.ts', [`--output=${output}`], box);
     expect(result.status, result.stderr).toBe(0);
     const commands = readFileSync(box.log, 'utf8').trim().split('\n');
-    expect(commands).toHaveLength(5);
+    expect(commands).toHaveLength(6);
     for (const command of commands) {
       expect(command).toContain('d1 execute inbox-db --remote --command SELECT');
       expect(command).not.toMatch(/\b(DELETE|UPDATE|INSERT|DROP|PUT)\b/);
@@ -103,6 +113,28 @@ describe('production backup and restore safety', () => {
     expect(statSync(output).mode & 0o777).toBe(0o600);
   });
 
+
+  it('normalizes a complete pre-hardening schema into a restorable format-3 snapshot', () => {
+    const box = sandbox('legacy');
+    const output = join(box.directory, 'legacy-backup.json');
+    const result = runScript('scripts/backup-prod.ts', [`--output=${output}`], box);
+    expect(result.status, result.stderr).toBe(0);
+    const commands = readFileSync(box.log, 'utf8').trim().split('\n');
+    expect(commands).toHaveLength(3);
+    expect(commands.every(command => command.includes('--remote --command SELECT'))).toBe(true);
+    const backup = JSON.parse(readFileSync(output, 'utf8'));
+    expect(backup.format).toBe(3);
+    expect(backup.emails[0]).toMatchObject({
+      id: 'legacy-id', ingest_key: 'legacy-id', storage_state: 'active',
+      body_text_size: 6, attachment_count: 1, attachment_total_size: 3,
+      activation_seq: 1, storage_generation: 1,
+    });
+    expect(backup.attachments[0]).toMatchObject({ storage_state: 'active', storage_generation: 1 });
+    expect(backup.ingestion_registry[0]).toMatchObject({ email_id: 'legacy-id', state: 'active' });
+    expect(backup.email_activation_events[0]).toMatchObject({ seq: 1, email_id: 'legacy-id' });
+    expect(backup.cleanup_outbox).toEqual([]);
+    expect(statSync(output).mode & 0o777).toBe(0o600);
+  });
   it('restore refuses by default and confirmed SQL preserves every coordination field', () => {
     const box = sandbox();
     const refused = runScript('scripts/restore-prod.ts', [], box);
