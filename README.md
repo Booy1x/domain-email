@@ -100,6 +100,7 @@ CI 会在隔离本地 D1 上分阶段应用全量 migration，并用旧 schema �
 ```bash
 npx tsx scripts/backup-prod.ts
 # 可选：--output=/secure/path/backup.json
+npx tsx scripts/restore-prod.ts --input=/secure/path/backup.json --validate-only
 ```
 
 `backup-prod.ts` 只执行 `SELECT`，绝不删除或更新 D1/R2。输出通过权限 `0600` 的临时文件原子替换，完整包含 emails、attachments、cleanup outbox、ingestion registry、activation events 以及 `deleted_at`、generation、claim/lease 等所有字段。

@@ -19,6 +19,7 @@ const DB_NAME = 'inbox-db';
 const BACKUP_FORMAT = 3;
 const CONFIRMATION = 'REPLACE_PRODUCTION_MAIL_DB';
 const MAX_SQL_STATEMENT_BYTES = 90_000;
+const validateOnly = process.argv.includes('--validate-only');
 const INLINE_TEXT_BYTES = 2_048;
 const TEXT_CHUNK_BYTES = 24_000;
 const confirmArg = process.argv.find(arg => arg.startsWith('--confirm='))?.slice('--confirm='.length);
@@ -282,7 +283,7 @@ function insertStatements(table: string, columns: readonly string[], row: Record
 }
 
 function main(): void {
-  if (confirmArg !== CONFIRMATION) {
+  if (!validateOnly && confirmArg !== CONFIRMATION) {
     console.error('Refusing destructive restore. Re-run with --confirm=REPLACE_PRODUCTION_MAIL_DB after verifying account, database, backup, and rollback plan.');
     process.exit(2);
   }
@@ -290,6 +291,10 @@ function main(): void {
   // Validation happens before creating SQL or invoking Wrangler. A truncated,
   // old, or internally inconsistent snapshot can never reach destructive SQL.
   const backup = validateBackup(JSON.parse(readFileSync(backupFile, 'utf8')));
+  if (validateOnly) {
+    console.log(`Backup is valid: ${backup.emails.length} emails, ${backup.attachments.length} attachments, ${backup.cleanup_outbox.length} cleanup records.`);
+    return;
+  }
   const temporaryDirectory = mkdtempSync(join(tmpdir(), 'domain-email-restore-'));
   chmodSync(temporaryDirectory, 0o700);
   const sqlFile = join(temporaryDirectory, 'restore.sql');

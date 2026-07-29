@@ -155,6 +155,16 @@ describe('production backup and restore safety', () => {
     expect(sql).toContain('INSERT INTO email_activation_events');
   });
 
+
+  it('validates a backup without confirmation, temporary SQL, or Wrangler calls', () => {
+    const box = sandbox();
+    const backup = writeBackup(box, completeBackup());
+    const result = runScript('scripts/restore-prod.ts', [`--input=${backup}`, '--validate-only'], box);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Backup is valid: 1 emails, 0 attachments');
+    expect(() => readFileSync(box.log)).toThrow();
+    expect(() => readFileSync(box.capture)).toThrow();
+  });
   it('rejects an incomplete backup before any Wrangler call or destructive SQL', () => {
     const box = sandbox();
     const incomplete = completeBackup() as any;
