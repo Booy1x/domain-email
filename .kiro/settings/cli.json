@@ -1,0 +1,6 @@
+{
+  "chat.defaultAgent": "cloudflare-domain-email",
+  "chat.enableCodeIntelligence": true,
+  "chat.enableSubagent": true,
+  "chat.enableTodoList": true
+}

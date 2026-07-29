@@ -208,6 +208,7 @@ function cleanTagAttributes(attrsStr: string): string {
 
   const kept: string[] = [];
   for (const { name, value } of attrs) {
+    if (!/^[a-z][a-z0-9_.-]*$/i.test(name)) continue;
     if (EVENT_ATTR_RE.test(name)) continue;
 
     if (name.startsWith('data-') && DANGEROUS_URI_RE.test(value)) continue;

@@ -34,6 +34,10 @@ describe('sanitizeHtml — XSS Protection', () => {
     expect(sanitize('<img src="x" onerror="alert(1)">')).toBe('<img src="x">');
   });
 
+
+  it('strips slash-tokenized event handlers', () => {
+    expect(sanitize('<img/onerror=alert(1)>')).toBe('<img>');
+  });
   it('strips onload on body tags', () => {
     expect(sanitize('<body onload="alert(1)">content</body>')).toBe('content');
   });

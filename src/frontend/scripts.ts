@@ -1,4 +1,20 @@
+export interface PollingPage<T> { emails?: T[]; cursor?: string | null }
+
+export async function drainPollingPages<T>(
+  fetchPage: (cursor: string | null) => Promise<PollingPage<T>>,
+  collected: T[] = [],
+): Promise<T[]> {
+  let cursor: string | null = null;
+  do {
+    const page = await fetchPage(cursor);
+    if (page.emails?.length) collected.push(...page.emails);
+    cursor = page.cursor || null;
+  } while (cursor);
+  return collected;
+}
+
 export const scripts = `
+${drainPollingPages.toString()}
 var state = {
   domain: '', rcptUser: '', emails: [], cursor: null, loading: false, hasMore: true,
   selectedId: null, totalLoaded: 0, view: 'home'
@@ -34,7 +50,6 @@ fetch('/api/domains')
   .catch(function() {});
 
 updateBreadcrumb();
-loadHomeEmails();
 
 function searchMails() {
   var q = document.getElementById('search').value.trim();
@@ -498,12 +513,11 @@ function loadEmailDetail(id) {
       if (requestSeq !== detailRequestSeq) return;
       var hasHtml = email.body_html && email.body_html.length > 0;
       var hasText = email.body_text && email.body_text.length > 0;
-      var isHtmlText = hasText && email.body_text.trim().charAt(0) === '<';
       var body;
       var iframeCardId = null;
-      var rawHtmlSrc = hasHtml ? email.body_html : (isHtmlText ? email.body_text : null);
+      var rawHtmlSrc = hasHtml ? email.body_html : null;
 
-      if (hasHtml || isHtmlText) {
+      if (hasHtml) {
         iframeCardId = 'email-card-' + id;
         body = '<div class="email-iframe-card" id="' + iframeCardId + '"></div>';
       } else if (hasText) {
@@ -530,8 +544,8 @@ function loadEmailDetail(id) {
       loadEmailAttachments(id, requestSeq);
 
       if (iframeCardId && rawHtmlSrc) {
-        var iframeSrcdoc = buildEmailSrcdoc(rawHtmlSrc);
-        mountEmailIframe(iframeCardId, iframeSrcdoc);
+        var iframeSrcdoc = buildEmailSrcdoc(rawHtmlSrc, false);
+        mountEmailIframe(iframeCardId, iframeSrcdoc, rawHtmlSrc);
       }
       fetch('/api/emails/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_read: true }) })
         .then(function() {
@@ -555,7 +569,7 @@ function loadEmailAttachments(id, requestSeq) {
       if (!el || !attachments || attachments.length === 0) return;
       el.innerHTML = '<div class="attachment-title">附件</div>' +
         attachments.map(function(att) {
-          var href = '/api/attachments/' + encodeURIComponent(att.r2_key);
+          var href = '/api/attachments/' + encodeURIComponent(att.id);
           return '<a class="attachment-item" href="' + href + '" target="_blank" rel="noopener noreferrer">' +
             '<span class="attachment-icon">📎</span>' +
             '<span class="attachment-name">' + esc(att.filename || '未命名附件') + '</span>' +
@@ -591,7 +605,7 @@ function formatTime(dateStr) {
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-function buildEmailSrcdoc(rawHtml) {
+function buildEmailSrcdoc(rawHtml, allowRemote) {
   var base = [
     'html,body{margin:0;padding:0;background:#f5f3f0;color:#2b2a27;overflow:visible;}',
     'body{padding:32px 36px;font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue","Noto Sans SC","PingFang SC",sans-serif;word-break:break-word;}',
@@ -612,7 +626,8 @@ function buildEmailSrcdoc(rawHtml) {
     'hr{border:0;height:1px;background:rgba(43,42,39,0.08);margin:20px 0;}',
     '@media(max-width:640px){body{padding:20px 18px;font-size:14px;}table{width:100%!important;}td,th{word-break:break-word;}}'
   ].join('');
-  var csp = "default-src 'none'; img-src data: cid: https: http:; style-src 'unsafe-inline'; font-src data: https:; media-src data:; base-uri 'none';";
+  var remoteSources = allowRemote ? ' https: http:' : '';
+  var csp = "default-src 'none'; img-src data: cid:" + remoteSources + "; style-src 'unsafe-inline'; font-src data:" + remoteSources + "; media-src data:; base-uri 'none'; form-action 'none';";
   return '<!doctype html><html><head>'
     + '<meta charset="utf-8">'
     + '<meta http-equiv="Content-Security-Policy" content="' + csp + '">'
@@ -622,7 +637,7 @@ function buildEmailSrcdoc(rawHtml) {
     + '</head><body>' + rawHtml + '</body></html>';
 }
 
-function mountEmailIframe(cardId, srcdoc) {
+function mountEmailIframe(cardId, srcdoc, rawHtml) {
   setTimeout(function() {
     var card = document.getElementById(cardId);
     if (!card) return;
@@ -725,19 +740,30 @@ function mountEmailIframe(cardId, srcdoc) {
       wireDoc();
     });
 
+    var remoteButton = document.createElement('button');
+    remoteButton.type = 'button';
+    remoteButton.className = 'remote-content-button';
+    remoteButton.textContent = '加载远程图片和字体';
+    remoteButton.title = '可能向发件方暴露你的 IP 地址和打开时间';
+    remoteButton.addEventListener('click', function() {
+      remoteButton.disabled = true;
+      remoteButton.textContent = '正在加载远程内容…';
+      iframe.srcdoc = buildEmailSrcdoc(rawHtml, true);
+      setTimeout(function() { if (remoteButton.parentNode) remoteButton.remove(); }, 500);
+    });
+    card.appendChild(remoteButton);
     card.appendChild(iframe);
   }, 0);
 }
 
-var lastSeenTs = null;
+var lastSeen = null;
+var pollInFlight = false;
 
-function updateLastSeenTs() {
-  if (state.emails && state.emails.length > 0) {
-    var newest = state.emails[0];
-    if (newest.created_at && (!lastSeenTs || newest.created_at > lastSeenTs)) {
-      lastSeenTs = newest.created_at;
-    }
-  }
+function compareActivation(a, b) {
+  var as = Number(a.activation_seq || a.seq || 0);
+  var bs = Number(b.activation_seq || b.seq || 0);
+  if (as !== bs) return as < bs ? -1 : 1;
+  return (a.id || '') < (b.id || '') ? -1 : ((a.id || '') > (b.id || '') ? 1 : 0);
 }
 
 function showToast(email) {
@@ -771,61 +797,47 @@ function dismissToast(el) {
   setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
 }
 
-function startPolling() {
-  setInterval(function() {
-    if (!lastSeenTs) return;
-    fetch('/api/emails/since?ts=' + encodeURIComponent(lastSeenTs))
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.emails && data.emails.length > 0) {
-          var emails = data.emails.slice().reverse();
-          for (var i = 0; i < emails.length; i++) {
-            showToast(emails[i]);
-          }
-          lastSeenTs = data.emails[0].created_at;
-          if (state.view === 'home') loadHomeEmails();
-        }
-      })
-      .catch(function() {});
-  }, 15000);
+function drainSince(url, collected) {
+  return drainPollingPages(function(cursor) {
+    var pageUrl = cursor
+      ? '/api/emails/since?limit=100&cursor=' + encodeURIComponent(cursor)
+      : url;
+    return fetch(pageUrl).then(function(r) { return r.json(); });
+  }, collected);
 }
 
-var originalLoadHomeEmails = loadHomeEmails;
-loadHomeEmails = function() {
-  originalLoadHomeEmails();
-  var check = setInterval(function() {
-    if (!state.loading) {
-      clearInterval(check);
-      updateLastSeenTs();
-    }
-  }, 50);
-};
+function pollForNewMail() {
+  if (pollInFlight || !lastSeen) return;
+  pollInFlight = true;
+  var url = '/api/emails/since?limit=100&seq=' + encodeURIComponent(lastSeen.seq) + '&id=' + encodeURIComponent(lastSeen.id);
+  drainSince(url, [])
+    .then(function(emails) {
+      if (!emails.length) return;
+      emails.sort(compareActivation);
+      for (var i = 0; i < emails.length; i++) showToast(emails[i]);
+      var newest = emails[emails.length - 1];
+      lastSeen = { seq: Number(newest.activation_seq), id: newest.id || '' };
+      if (state.view === 'home') loadHomeEmails();
+    })
+    .catch(function() {})
+    .finally(function() { pollInFlight = false; });
+}
 
-var originalRenderEmailList = renderEmailList;
-renderEmailList = function() {
-  originalRenderEmailList();
-  updateLastSeenTs();
-};
+function startPolling() {
+  setInterval(pollForNewMail, 15000);
+}
 
-var originalLoadEmails = loadEmails;
-loadEmails = function(reset) {
-  var prevLoading = state.loading;
-  originalLoadEmails(reset);
-  var check = setInterval(function() {
-    if (!state.loading && prevLoading) {
-      clearInterval(check);
-      updateLastSeenTs();
-    }
-    prevLoading = state.loading;
-  }, 50);
-};
-
-setTimeout(function() {
-  updateLastSeenTs();
-  if (!lastSeenTs) {
-    var d = new Date(Date.now() - 60000);
-    lastSeenTs = d.toISOString();
-  }
-  startPolling();
-}, 1000);
+fetch('/api/emails/since?initial=1')
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    var watermark = data.watermark || { seq: 0, id: '' };
+    lastSeen = { seq: Number(watermark.seq || 0), id: watermark.id || '' };
+    loadHomeEmails();
+    startPolling();
+  })
+  .catch(function() {
+    lastSeen = { seq: 0, id: '' };
+    loadHomeEmails();
+    startPolling();
+  });
 `;

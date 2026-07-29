@@ -1,62 +1,47 @@
 #!/usr/bin/env tsx
 
 /**
- * 备份生产数据到本地 JSON 文件
- * 备份后自动清空 D1 中的生产数据（软删除改为硬删除）
- *
- * 用法: npx tsx scripts/backup-prod.ts
+ * Read-only production D1 backup. This script never mutates D1 or R2.
+ * Usage: npx tsx scripts/backup-prod.ts [--output=path]
  */
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 
-import { execSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+const DB_NAME = 'inbox-db';
+const outputArg = process.argv.find(arg => arg.startsWith('--output='));
+const backupFile = resolve(outputArg?.slice('--output='.length) || 'raw/prod-backup.json');
 
-const DB_NAME = "mail-db";
-const BACKUP_FILE = "raw/prod-backup.json";
-
-function d1(sql: string): any[] {
-  const out = execSync(`npx wrangler d1 execute ${DB_NAME} --remote --command "${sql.replace(/"/g, '\\"')}" --json`, {
-    stdio: "pipe",
-    maxBuffer: 10 * 1024 * 1024,
-  }).toString();
-  const parsed = JSON.parse(out);
-  return parsed[0]?.results ?? [];
+function query(sql: string): unknown[] {
+  const output = execFileSync('npx', [
+    'wrangler', 'd1', 'execute', DB_NAME, '--remote', '--command', sql, '--json',
+  ], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'inherit'] });
+  const parsed = JSON.parse(output) as Array<{ results?: unknown[] }>;
+  return parsed[0]?.results || [];
 }
 
-async function main() {
-  console.log("\n📦 备份生产数据...\n");
-
-  // 1. Export all emails
-  console.log("  导出 emails...");
-  const emails = d1("SELECT * FROM emails");
-  console.log(`  ✅ ${emails.length} 封邮件`);
-
-  // 2. Export all attachments
-  console.log("  导出 attachments...");
-  const attachments = d1("SELECT * FROM attachments");
-  console.log(`  ✅ ${attachments.length} 个附件记录`);
-
-  // 3. Save to file
+function main(): void {
+  console.log('Creating read-only production metadata backup (no delete or write operations)...');
   const backup = {
+    format: 3,
+    database: DB_NAME,
     timestamp: new Date().toISOString(),
-    emails,
-    attachments,
+    emails: query('SELECT * FROM emails ORDER BY created_at, id'),
+    attachments: query('SELECT * FROM attachments ORDER BY created_at, id'),
+    cleanup_outbox: query('SELECT * FROM cleanup_outbox ORDER BY created_at, id'),
+    ingestion_registry: query('SELECT * FROM ingestion_registry ORDER BY ingest_key'),
+    email_activation_events: query('SELECT * FROM email_activation_events ORDER BY seq'),
   };
-  writeFileSync(BACKUP_FILE, JSON.stringify(backup, null, 2));
-  console.log(`\n  💾 已保存到 ${BACKUP_FILE}`);
-
-  // 4. Hard-delete production data from D1
-  console.log("\n  🗑  清空 D1 生产数据...");
-  execSync(`npx wrangler d1 execute ${DB_NAME} --remote --command "DELETE FROM attachments; DELETE FROM emails;"`, {
-    stdio: "pipe",
-  });
-
-  // 5. Rebuild FTS index (now empty)
-  execSync(`npx wrangler d1 execute ${DB_NAME} --remote --command "INSERT INTO emails_fts(emails_fts) VALUES('rebuild');"`, {
-    stdio: "pipe",
-  });
-
-  console.log("  ✅ D1 已清空\n");
-  console.log("🎉 备份完成！可以安全插入 mock 数据了。\n");
+  mkdirSync(dirname(backupFile), { recursive: true, mode: 0o700 });
+  const temporary = `${backupFile}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    writeFileSync(temporary, JSON.stringify(backup, null, 2), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    renameSync(temporary, backupFile);
+  } catch (error) {
+    try { unlinkSync(temporary); } catch {}
+    throw error;
+  }
+  console.log(`Backup written to ${backupFile}. Production data was not modified.`);
 }
 
 main();

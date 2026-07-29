@@ -11,7 +11,7 @@
 
 import { execSync } from "node:child_process";
 
-const DB_NAME = "mail-db";
+const DB_NAME = "inbox-db";
 const HOUR = 3600000;
 const DAY = 86400000;
 const NOW = Date.now();
@@ -277,13 +277,30 @@ function insertBatch(emails: MockEmail[]): void {
     const batch = emails.slice(i, i + batchSize);
     const stmts = batch.map(
       (e) =>
-        `INSERT OR IGNORE INTO emails (id, domain, mail_from, rcpt_to, subject, body_text, body_html, date, r2_key, is_read, is_flagged, is_spam) VALUES ('${esc(e.id)}','${esc(e.domain)}','${esc(e.mail_from)}','${esc(e.rcpt_to)}','${esc(e.subject)}','${esc(e.body_text)}','${esc(e.body_html)}','${esc(e.date)}','',${e.is_read},${e.is_flagged},0)`
+        `INSERT OR IGNORE INTO emails (id, domain, mail_from, rcpt_to, subject, body_text, body_html, date, r2_key, is_read, is_flagged, is_spam, ingest_key, storage_state, raw_size, body_text_size, body_html_size, attachment_count, attachment_total_size, storage_generation) VALUES ('${esc(e.id)}','${esc(e.domain)}','${esc(e.mail_from)}','${esc(e.rcpt_to)}','${esc(e.subject)}','${esc(e.body_text)}','${esc(e.body_html)}','${esc(e.date)}','',${e.is_read},${e.is_flagged},0,'${esc(e.id)}','active',0,${Buffer.byteLength(e.body_text, 'utf8')},${Buffer.byteLength(e.body_html, 'utf8')},0,0,1)`
     );
     const sql = stmts.join("; ") + ";";
-    execSync(`npx wrangler d1 execute ${DB_NAME} --remote --command "${sql.replace(/"/g, '\\"')}"`, {
+    execSync(`npx wrangler d1 execute ${DB_NAME} --local --command "${sql.replace(/"/g, '\\"')}"`, {
       stdio: "pipe",
     });
   }
+
+  // Keep local mock rows compatible with the production ingestion invariants.
+  execSync(`npx wrangler d1 execute ${DB_NAME} --local --command "
+    INSERT OR IGNORE INTO ingestion_registry
+      (ingest_key, email_id, storage_generation, state, updated_at)
+      SELECT ingest_key, id, storage_generation, 'active', created_at
+      FROM emails WHERE storage_state = 'active';
+    INSERT OR IGNORE INTO email_activation_events
+      (email_id, storage_generation, activated_at)
+      SELECT id, storage_generation, created_at FROM emails
+      WHERE storage_state = 'active' AND activation_seq IS NULL
+      ORDER BY created_at, id;
+    UPDATE emails SET activation_seq = (
+      SELECT seq FROM email_activation_events
+      WHERE email_id = emails.id AND storage_generation = emails.storage_generation
+    ) WHERE storage_state = 'active' AND activation_seq IS NULL;
+  "`, { stdio: "pipe" });
 }
 
 // ── main ──────────────────────────────────────────────────────────────
@@ -295,8 +312,8 @@ async function main() {
 
   if (shouldClear) {
     console.log("  🗑  清空现有数据...");
-    execSync(`npx wrangler d1 execute ${DB_NAME} --remote --command "DELETE FROM emails; DELETE FROM attachments;"`, { stdio: "pipe" });
-    execSync(`npx wrangler d1 execute ${DB_NAME} --remote --command "INSERT INTO emails_fts(emails_fts) VALUES('rebuild');"`, { stdio: "pipe" });
+    execSync(`npx wrangler d1 execute ${DB_NAME} --local --command "DELETE FROM cleanup_outbox; DELETE FROM ingestion_registry; DELETE FROM email_activation_events; DELETE FROM attachments; DELETE FROM emails;"`, { stdio: "pipe" });
+    execSync(`npx wrangler d1 execute ${DB_NAME} --local --command "INSERT INTO emails_fts(emails_fts) VALUES('rebuild');"`, { stdio: "pipe" });
     console.log("  ✅ 已清空\n");
   }
 
@@ -311,7 +328,7 @@ async function main() {
 
   // Verify
   const result = execSync(
-    `npx wrangler d1 execute ${DB_NAME} --remote --command "SELECT domain, COUNT(*) as cnt FROM emails GROUP BY domain ORDER BY domain;" --json`,
+    `npx wrangler d1 execute ${DB_NAME} --local --command "SELECT domain, COUNT(*) as cnt FROM emails GROUP BY domain ORDER BY domain;" --json`,
     { stdio: "pipe" }
   ).toString();
   const parsed = JSON.parse(result);

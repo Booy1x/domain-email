@@ -1,86 +1,235 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { parseEmail, streamToBuffer } from './mime';
+import { parseEmail, PayloadTooLargeError, streamToBuffer } from './mime';
 import { inboxPage } from './frontend/index';
-import { sanitizeHtml, escapeHtml } from './sanitize';
-import type { Env, EmailRow, AttachmentRow } from './types';
+import { sanitizeHtml } from './sanitize';
+import { assertQueryLength, getLimits, parsePageLimit } from './limits';
+import type { AttachmentRow, EmailRow, Env, PublicAttachment } from './types';
 import {
-  insertEmail, insertAttachment, listEmails, listDeletedEmails, getEmail,
-  getAttachments, markRead, markFlagged, deleteEmail, restoreEmail, purgeDeleted,
-  getDomains, getDomainsWithRecipients, searchEmails, listEmailsSince,
-  checkRateLimit,
+  InvalidCursorError, activateIngestion, checkRateLimit, claimCleanup, cleanupStatus, completeCleanup,
+  deleteEmail, failCleanup, getActivationWatermark, getAttachment, getAttachments, getDomainsWithRecipients,
+  getEmail, listDeletedEmails, listEmails, listEmailsSince,
+  listObjectReferences, listPendingCleanup, markFlagged, markRead, reserveIngestion, restoreEmail,
+  stageIngestion, stagePurgeDeleted,
 } from './db';
 
-export function sanitizeEmailRow(email: EmailRow): EmailRow {
-  const rawHtml = email.body_html || '';
-  let bodyHtml = rawHtml;
+const textEncoder = new TextEncoder();
+const D1_SAFE_TEXT_VALUE_BYTES = 1024 * 1024;
+const D1_SAFE_EMAIL_TEXT_BYTES = 1536 * 1024;
+const D1_EMAIL_NON_TEXT_RESERVE_BYTES = 4096;
 
-  if (bodyHtml.length > 2_000_000) {
-    // Pathologically large body. Skip the regex-based sanitizer to avoid
-    // burning Worker CPU on what is almost certainly junk. The frontend
-    // sandbox iframe + CSP still neutralize scripts in the rendered HTML.
-    bodyHtml = rawHtml;
-  } else if (bodyHtml.length > 0) {
+function byteLength(value: string): number {
+  return textEncoder.encode(value).length;
+}
+
+function fitsD1TextBudget(values: string[], totalLimit = D1_SAFE_EMAIL_TEXT_BYTES): boolean {
+  let total = 0;
+  for (const value of values) {
+    const size = byteLength(value);
+    if (size > D1_SAFE_TEXT_VALUE_BYTES) return false;
+    total += size;
+    if (total > totalLimit) return false;
+  }
+  return true;
+}
+
+async function sha256Hex(parts: Array<string | Uint8Array>): Promise<string> {
+  const encoded = parts.map(part => typeof part === 'string' ? textEncoder.encode(part) : part);
+  const total = encoded.reduce((sum, part) => sum + part.length, 0);
+  const input = new Uint8Array(total);
+  let offset = 0;
+  for (const part of encoded) { input.set(part, offset); offset += part.length; }
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', input));
+  return Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export async function mapWithConcurrency<T>(items: T[], concurrency: number, operation: (item: T, index: number) => Promise<void>): Promise<void> {
+  let next = 0;
+  const workers = Array.from({ length: Math.min(Math.max(1, concurrency), Math.max(1, items.length)) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      await operation(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+}
+
+export interface PublicEmailDetail {
+  id: string;
+  domain: string;
+  mail_from: string;
+  rcpt_to: string;
+  subject: string;
+  body_text: string;
+  body_html: string;
+  date: string;
+  is_read: number;
+  is_flagged: number;
+  is_spam: number;
+  created_at: string;
+  attachment_count: number;
+  attachment_total_size: number;
+}
+
+export function sanitizeEmailRow(email: EmailRow): PublicEmailDetail {
+  let bodyHtml = '';
+  if (email.body_html && byteLength(email.body_html) <= 2 * 1024 * 1024) {
     try {
-      bodyHtml = sanitizeHtml(bodyHtml);
+      bodyHtml = sanitizeHtml(email.body_html);
     } catch {
-      bodyHtml = rawHtml; // fallback to unsanitized rather than losing content
+      // Never return attacker-controlled HTML when sanitization fails.
+      bodyHtml = '';
     }
   }
-
-  // Fix invalid date values already stored in DB
   let date = email.date || '';
-  if (date && isNaN(new Date(date).getTime())) {
-    date = email.created_at || new Date().toISOString();
-  }
-
+  if (date && Number.isNaN(new Date(date).getTime())) date = email.created_at || new Date(0).toISOString();
   return {
-    ...email,
-    date,
+    id: email.id,
+    domain: email.domain,
+    mail_from: email.mail_from || '',
+    rcpt_to: email.rcpt_to || '',
+    subject: email.subject || '',
+    body_text: email.body_text || '',
     body_html: bodyHtml,
-    subject: escapeHtml(email.subject || ''),
-    mail_from: escapeHtml(email.mail_from || ''),
-    rcpt_to: escapeHtml(email.rcpt_to || ''),
+    date,
+    is_read: email.is_read,
+    is_flagged: email.is_flagged,
+    is_spam: email.is_spam,
+    created_at: email.created_at,
+    attachment_count: email.attachment_count || 0,
+    attachment_total_size: email.attachment_total_size || 0,
   };
 }
 
-// ============================================================
-// Email handler — triggered by Cloudflare Email Routing
-// ============================================================
-async function handleEmail(
-  message: ForwardableEmailMessage,
-  env: Env,
-): Promise<void> {
-  // Global rate limit — reject early before any I/O or parsing
-  const maxPerHour = parseInt(env.MAX_EMAILS_PER_HOUR || '0', 10);
-  if (maxPerHour > 0) {
-    const allowed = await checkRateLimit(env.INBOX_DB, maxPerHour);
-    if (!allowed) {
-      console.log('Rate limit exceeded, discarding email from', message.from);
-      return;
-    }
+function publicAttachment(row: AttachmentRow): PublicAttachment {
+  return {
+    id: row.id,
+    email_id: row.email_id,
+    filename: row.filename,
+    content_type: row.content_type,
+    size: row.size,
+    created_at: row.created_at,
+  };
+}
+
+function safeDownloadName(value: string, fallback: string): { ascii: string; encoded: string } {
+  const cleaned = value.replace(/[\u0000-\u001f\u007f"'\\/]/g, '_').trim().slice(0, 180) || fallback;
+  const ascii = cleaned.replace(/[^\x20-\x7e]/g, '_');
+  return { ascii, encoded: encodeURIComponent(cleaned) };
+}
+
+function setDownloadHeaders(headers: Headers, filename: string, contentType: string): void {
+  const safe = safeDownloadName(filename, 'download');
+  const mediaType = contentType.split(';', 1)[0].trim().toLowerCase();
+  const safeContentType = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(mediaType)
+    ? mediaType : 'application/octet-stream';
+  headers.set('Content-Type', safeContentType);
+  headers.set('Content-Disposition', `attachment; filename="${safe.ascii}"; filename*=UTF-8''${safe.encoded}`);
+  headers.set('X-Content-Type-Options', 'nosniff');
+  headers.set('Cache-Control', 'private, no-store');
+  headers.set('Pragma', 'no-cache');
+}
+
+function validOpaqueId(value: string): boolean {
+  return value.length >= 8 && value.length <= 128 && /^[A-Za-z0-9_-]+$/.test(value);
+}
+
+export async function handleEmail(message: ForwardableEmailMessage, env: Env): Promise<void> {
+  const limits = getLimits(env);
+  const maxPerHour = Number.parseInt(env.MAX_EMAILS_PER_HOUR || '0', 10);
+  if (Number.isFinite(maxPerHour) && maxPerHour > 0 && !await checkRateLimit(env.INBOX_DB, maxPerHour)) {
+    message.setReject('Mailbox rate limit exceeded');
+    console.warn('email_rejected_rate_limit');
+    return;
+  }
+  if (message.rawSize > limits.rawBytes) {
+    message.setReject('Message too large');
+    console.warn('email_rejected_raw_limit');
+    return;
   }
 
-  // Buffer raw stream first (can only be consumed once)
-  const rawBuffer = await streamToBuffer(message.raw);
+  let rawBuffer: Uint8Array;
+  try {
+    rawBuffer = await streamToBuffer(message.raw, limits.rawBytes);
+  } catch (error) {
+    if (error instanceof PayloadTooLargeError) {
+      message.setReject('Message too large');
+      console.warn('email_rejected_raw_limit');
+      return;
+    }
+    throw error;
+  }
+
+  const recipient = (message.to || '').trim().toLowerCase();
+  const ingestKey = await sha256Hex([recipient, '\0', rawBuffer]);
+  const emailId = ingestKey;
 
   const parsed = await parseEmail(rawBuffer);
+  const bodyTextSize = byteLength(parsed.bodyText || '');
+  const bodyHtmlSize = byteLength(parsed.bodyHtml || '');
+  const attachmentTotalSize = parsed.attachments.reduce((sum, attachment) => sum + attachment.size, 0);
+  if (bodyTextSize > limits.bodyPartBytes || bodyHtmlSize > limits.bodyPartBytes
+      || bodyTextSize + bodyHtmlSize > limits.bodyTotalBytes) {
+    message.setReject('Message body too large');
+    console.warn('email_rejected_body_limit');
+    return;
+  }
+  const metadataValues = [
+    emailId, recipient, parsed.from || '', message.to || '', parsed.subject || '',
+    parsed.bodyText || '', parsed.bodyHtml || '',
+  ];
+  if (!fitsD1TextBudget(metadataValues, D1_SAFE_EMAIL_TEXT_BYTES - D1_EMAIL_NON_TEXT_RESERVE_BYTES)
+      || parsed.attachments.some(attachment => !fitsD1TextBudget([
+        attachment.filename || 'attachment', attachment.contentType || 'application/octet-stream',
+      ]))) {
+    message.setReject('Message metadata too large');
+    console.warn('email_rejected_metadata_limit');
+    return;
+  }
+  if (parsed.attachments.length > limits.attachmentCount) {
+    message.setReject('Too many attachments');
+    console.warn('email_rejected_attachment_count');
+    return;
+  }
+  if (parsed.attachments.some(attachment => attachment.size > limits.attachmentBytes)) {
+    message.setReject('Attachment too large');
+    console.warn('email_rejected_attachment_limit');
+    return;
+  }
+  if (attachmentTotalSize > limits.attachmentsTotalBytes) {
+    message.setReject('Attachments too large');
+    console.warn('email_rejected_attachment_total_limit');
+    return;
+  }
 
-  const domain = message.to.includes('@')
-    ? message.to.split('@')[1].toLowerCase()
-    : 'unknown';
-
-  const emailId = crypto.randomUUID();
-
-  // Store raw email in R2
-  const rawKey = `raw/${emailId}.eml`;
-  await env.INBOX_BUCKET.put(rawKey, rawBuffer);
-
-  // Insert email metadata into D1
-  const emailDate = parsed.date && !isNaN(parsed.date.getTime())
-    ? parsed.date.toISOString()
-    : new Date().toISOString();
-
+  const reservation = await reserveIngestion(env.INBOX_DB, ingestKey, emailId);
+  if (reservation.state === 'active') return;
+  if (reservation.state !== 'pending') {
+    console.warn('email_ingest_deferred_cleanup', { email_id: emailId });
+    throw new Error('email_cleanup_in_progress');
+  }
+  const generation = reservation.storage_generation;
+  const rawKey = generation === 1 ? `raw/${emailId}.eml` : `raw/${emailId}.g${generation}.eml`;
+  const createdAt = new Date().toISOString();
+  const domain = recipient.includes('@') ? recipient.slice(recipient.lastIndexOf('@') + 1) : 'unknown';
+  const emailDate = parsed.date && !Number.isNaN(parsed.date.getTime()) ? parsed.date.toISOString() : createdAt;
+  const attachmentRows: AttachmentRow[] = [];
+  for (let index = 0; index < parsed.attachments.length; index++) {
+    const attachment = parsed.attachments[index];
+    const attachmentId = await sha256Hex([emailId, ':', String(index)]);
+    attachmentRows.push({
+      id: attachmentId,
+      email_id: emailId,
+      filename: attachment.filename || 'attachment',
+      content_type: attachment.contentType || 'application/octet-stream',
+      size: attachment.size,
+      r2_key: generation === 1
+        ? `attachments/${attachmentId}`
+        : `attachments/${attachmentId}.g${generation}`,
+      storage_state: 'pending',
+      storage_generation: generation,
+    });
+  }
   const emailRow: EmailRow = {
     id: emailId,
     domain,
@@ -94,213 +243,256 @@ async function handleEmail(
     is_read: 0,
     is_flagged: 0,
     is_spam: 0,
-    created_at: new Date().toISOString(),
+    created_at: createdAt,
+    ingest_key: ingestKey,
+    storage_state: 'pending',
+    raw_size: rawBuffer.length,
+    body_text_size: bodyTextSize,
+    body_html_size: bodyHtmlSize,
+    attachment_count: attachmentRows.length,
+    attachment_total_size: attachmentTotalSize,
+    storage_generation: generation,
   };
 
-  await insertEmail(env.INBOX_DB, emailRow);
-
-  // Store attachments in R2 + D1 (parallel)
-  await Promise.all(parsed.attachments.map(async (att) => {
-    const attId = crypto.randomUUID();
-    const attKey = `attachments/${emailId}/${att.filename}`;
-    const attRow: AttachmentRow = {
-      id: attId,
-      email_id: emailId,
-      filename: att.filename,
-      content_type: att.contentType,
-      size: att.size,
-      r2_key: attKey,
-    };
-    await Promise.all([
-      env.INBOX_BUCKET.put(attKey, att.content, {
-        httpMetadata: { contentType: att.contentType },
-      }),
-      insertAttachment(env.INBOX_DB, attRow),
-    ]);
-  }));
+  await stageIngestion(env.INBOX_DB, emailRow, attachmentRows);
+  try {
+    await env.INBOX_BUCKET.put(rawKey, rawBuffer, { httpMetadata: { contentType: 'message/rfc822' } });
+    await mapWithConcurrency(parsed.attachments, limits.objectConcurrency, async (attachment, index) => {
+      const row = attachmentRows[index];
+      await env.INBOX_BUCKET.put(row.r2_key, attachment.content, {
+        httpMetadata: { contentType: row.content_type },
+      });
+    });
+    await activateIngestion(env.INBOX_DB, ingestKey, emailId, generation);
+    console.log('email_ingest_complete', { email_id: emailId });
+  } catch {
+    console.error('email_ingest_partial_failure', { email_id: emailId });
+    throw new Error('email_ingest_incomplete');
+  }
 }
 
-// ============================================================
-// HTTP handler — API + frontend
-// ============================================================
-const app = new Hono<{ Bindings: Env }>();
+export interface CleanupProgress {
+  processed: { emails: number; objects: number };
+  failed: { emails: number; objects: number };
+  pending: { objects: number; readyEmails: number };
+  canContinue: boolean;
+}
+
+export async function processCleanup(env: Env): Promise<CleanupProgress> {
+  const limits = getLimits(env);
+  const candidates = await listPendingCleanup(env.INBOX_DB, limits.cleanupEmailsPerRun);
+  let processedEmails = 0;
+  let processedObjects = 0;
+  let failedEmails = 0;
+  let failedObjects = 0;
+  for (const candidate of candidates) {
+    const claimToken = crypto.randomUUID();
+    const items = await claimCleanup(env.INBOX_DB, candidate.email_id, claimToken);
+    if (!items.length) continue;
+    let claimFailed = false;
+    await mapWithConcurrency(items, limits.objectConcurrency, async item => {
+      try {
+        await env.INBOX_BUCKET.delete(item.object_key);
+        processedObjects++;
+      } catch {
+        claimFailed = true;
+        failedObjects++;
+        console.error('cleanup_object_failed', { outbox_id: item.id });
+      }
+    });
+    if (claimFailed) {
+      failedEmails++;
+      await failCleanup(env.INBOX_DB, candidate.email_id, claimToken);
+    } else {
+      processedEmails++;
+      await completeCleanup(env.INBOX_DB, candidate.email_id, claimToken);
+    }
+  }
+  const status = await cleanupStatus(env.INBOX_DB);
+  return {
+    processed: { emails: processedEmails, objects: processedObjects },
+    failed: { emails: failedEmails, objects: failedObjects },
+    pending: { objects: status.pending, readyEmails: status.readyEmails },
+    canContinue: status.readyEmails > 0,
+  };
+}
+
+export const app = new Hono<{ Bindings: Env }>();
 
 app.use('/api/*', async (c, next) => {
   const origin = c.env.CORS_ORIGIN || 'https://mail.525458.xyz';
-  return cors({ origin })(c, next);
+  return cors({ origin, credentials: true })(c, next);
 });
 
-// Frontend page
-app.get('/', async (c) => {
+app.get('/', async c => {
   const data = await getDomainsWithRecipients(c.env.INBOX_DB);
+  c.header('Cache-Control', 'private, no-store');
   return c.html(inboxPage(data.domains));
 });
 
-// List emails
-app.get('/api/emails', async (c) => {
-  const domain = c.req.query('domain');
+app.get('/api/emails', async c => {
+  const limits = getLimits(c.env);
   const q = c.req.query('q');
-  const rcptUser = c.req.query('rcpt_user');
-  const cursor = c.req.query('cursor');
-  const limit = parseInt(c.req.query('limit') || '50', 10);
-
-  const result = await listEmails(c.env.INBOX_DB, { domain, q, rcptUser, cursor, limit });
-  return c.json(result);
+  assertQueryLength(q, limits.queryLength);
+  const limit = parsePageLimit(c.req.query('limit'), limits.pageSize);
+  return c.json(await listEmails(c.env.INBOX_DB, {
+    domain: c.req.query('domain'), q, rcptUser: c.req.query('rcpt_user'),
+    cursor: c.req.query('cursor'), limit,
+  }));
 });
 
-// Recent emails (global, no domain filter)
-app.get('/api/emails/recent', async (c) => {
-  const limit = parseInt(c.req.query('limit') || '5', 10);
-  const result = await listEmails(c.env.INBOX_DB, { limit });
-  return c.json(result);
+app.get('/api/emails/recent', async c => {
+  const limits = getLimits(c.env);
+  return c.json(await listEmails(c.env.INBOX_DB, { limit: parsePageLimit(c.req.query('limit'), limits.pageSize, 5) }));
 });
 
-// Emails since a given timestamp (for polling new emails)
-app.get('/api/emails/since', async (c) => {
-  const ts = c.req.query('ts');
-  if (!ts) return c.json({ error: 'missing ts param' }, 400);
-  const emails = await listEmailsSince(c.env.INBOX_DB, ts);
-
-  const etag = emails.length > 0 ? emails[0].created_at : ts;
-  if (c.req.header('If-None-Match') === etag) {
-    return new Response(null, { status: 304 });
+app.get('/api/emails/since', async c => {
+  const limits = getLimits(c.env);
+  if (c.req.query('initial') === '1') {
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ emails: [], cursor: null, watermark: await getActivationWatermark(c.env.INBOX_DB) });
   }
-  c.header('ETag', etag);
-  return c.json({ emails });
+  const rawSeq = c.req.query('seq');
+  const sequence = rawSeq === undefined ? NaN : Number(rawSeq);
+  if (!c.req.query('cursor') && (!Number.isSafeInteger(sequence) || sequence < 0)) {
+    return c.json({ error: 'invalid seq param' }, 400);
+  }
+  const result = await listEmailsSince(c.env.INBOX_DB, {
+    cursor: c.req.query('cursor'), seq: sequence, id: c.req.query('id'),
+    limit: parsePageLimit(c.req.query('limit'), limits.pageSize, limits.pageSize),
+  });
+  c.header('Cache-Control', 'private, no-store');
+  return c.json(result);
 });
 
-// List deleted emails
-app.get('/api/emails/deleted', async (c) => {
-  const domain = c.req.query('domain');
+app.get('/api/emails/deleted', async c => {
+  const limits = getLimits(c.env);
   const q = c.req.query('q');
-  const cursor = c.req.query('cursor');
-  const limit = parseInt(c.req.query('limit') || '50', 10);
-  const result = await listDeletedEmails(c.env.INBOX_DB, { domain, q, cursor, limit });
-  return c.json(result);
+  assertQueryLength(q, limits.queryLength);
+  return c.json(await listDeletedEmails(c.env.INBOX_DB, {
+    domain: c.req.query('domain'), q, cursor: c.req.query('cursor'),
+    limit: parsePageLimit(c.req.query('limit'), limits.pageSize),
+  }));
 });
 
-// Permanently delete all soft-deleted emails (also cleans R2)
-app.delete('/api/emails/purge', async (c) => {
-  const { emailKeys, attachmentKeys } = await purgeDeleted(c.env.INBOX_DB);
-  await Promise.all([
-    ...emailKeys.map(k => c.env.INBOX_BUCKET.delete(k)),
-    ...attachmentKeys.map(k => c.env.INBOX_BUCKET.delete(k)),
-  ]);
-  return c.json({ ok: true });
-});
-
-// List domains with recipients
-app.get('/api/domains', async (c) => {
-  const data = await getDomainsWithRecipients(c.env.INBOX_DB);
-  return c.json(data.domains);
-});
-
-// Get email detail
-app.get('/api/emails/:id', async (c) => {
-  const id = c.req.param('id');
-  try {
-    const email = await getEmail(c.env.INBOX_DB, id);
-    if (!email) return c.json({ error: 'not found' }, 404);
-
-    // If body is empty but raw exists in R2, re-parse from raw
-    if (!email.body_html && !email.body_text && email.r2_key) {
-      try {
-        const rawObj = await c.env.INBOX_BUCKET.get(email.r2_key);
-        if (rawObj) {
-          const rawBuffer = new Uint8Array(await rawObj.arrayBuffer());
-          const reParsed = await parseEmail(rawBuffer);
-          email.body_html = reParsed.bodyHtml || '';
-          email.body_text = reParsed.bodyText || '';
-        }
-      } catch (e) {
-        console.error('Failed to re-parse raw email:', id, e);
-      }
-    }
-
-    // Email bodies are immutable once stored — only `is_read` / `is_flagged`
-    // flip later, and those are fetched via the list endpoint. Letting the
-    // browser keep a short private cache means re-opening the same email
-    // within a session round-trips to memory instead of the Worker. The
-    // server-side sanitizer still runs on each new fetch, so a sanitizer
-    // rule change continues to take effect within max-age seconds.
-    c.header('Cache-Control', 'private, max-age=300');
-    return c.json(sanitizeEmailRow(email));
-  } catch (e) {
-    console.error('Failed to get email detail:', id, e);
-    return c.json({ error: 'internal error' }, 500);
+app.delete('/api/emails/purge', async c => {
+  if (c.req.header('X-Confirm-Destructive-Action') !== 'purge-deleted') {
+    return c.json({ error: 'explicit confirmation required' }, 409);
   }
+  await stagePurgeDeleted(c.env.INBOX_DB);
+  return c.json({ ok: true, cleanup: await processCleanup(c.env) });
 });
 
-// Get email attachments
-app.get('/api/emails/:id/attachments', async (c) => {
-  const id = c.req.param('id');
-  const result = await getAttachments(c.env.INBOX_DB, id);
-  const attRows = (result.results || []) as AttachmentRow[];
-  return c.json(attRows);
-});
-
-// Get attachment content from R2
-app.get('/api/attachments/:key', async (c) => {
-  const key = c.req.param('key');
-  // Validate key format to prevent path traversal
-  if (!/^attachments\/[0-9a-f-]{36}\/[^/]+$/.test(key)) {
-    return c.json({ error: 'invalid key' }, 400);
+app.post('/api/maintenance/cleanup', async c => {
+  if (c.req.header('X-Confirm-Destructive-Action') !== 'process-cleanup') {
+    return c.json({ error: 'explicit confirmation required' }, 409);
   }
-  const obj = await c.env.INBOX_BUCKET.get(key);
-  if (!obj) return c.json({ error: 'not found' }, 404);
-  const headers = new Headers();
-  obj.writeHttpMetadata(headers);
-  headers.set('Cache-Control', 'public, max-age=31536000');
-  return c.body(obj.body, { headers });
+  return c.json({ ok: true, cleanup: await processCleanup(c.env) });
 });
 
-// Download raw email
-app.get('/api/emails/:id/raw', async (c) => {
+app.get('/api/maintenance/reconcile', async c => {
+  const limits = getLimits(c.env);
+  const limit = parsePageLimit(c.req.query('limit'), Math.min(limits.pageSize, 100), 50);
+  const page = await listObjectReferences(c.env.INBOX_DB, c.req.query('cursor'), limit);
+  const missing: Array<{ id: string; kind: string }> = [];
+  await mapWithConcurrency(page.items, limits.objectConcurrency, async item => {
+    if (!await c.env.INBOX_BUCKET.head(item.object_key)) missing.push({ id: item.id, kind: item.kind });
+  });
+  return c.json({ checked: page.items.length, missing, cursor: page.cursor, cleanup: await cleanupStatus(c.env.INBOX_DB) });
+});
+
+app.get('/api/domains', async c => c.json((await getDomainsWithRecipients(c.env.INBOX_DB)).domains));
+
+app.get('/api/emails/:id', async c => {
   const id = c.req.param('id');
+  if (!validOpaqueId(id)) return c.json({ error: 'invalid id' }, 400);
   const email = await getEmail(c.env.INBOX_DB, id);
-  if (!email || !email.r2_key) return c.json({ error: 'not found' }, 404);
-  const obj = await c.env.INBOX_BUCKET.get(email.r2_key);
-  if (!obj) return c.json({ error: 'raw email not found' }, 404);
-  const headers = new Headers();
-  obj.writeHttpMetadata(headers);
-  const safeFilename = (email.subject || 'email').replace(/[\r\n\0\\]/g, '').slice(0, 200);
-  const encodedFilename = encodeURIComponent(safeFilename + '.eml');
-  headers.set('Content-Disposition', `attachment; filename="${safeFilename}.eml"; filename*=UTF-8''${encodedFilename}`);
-  return c.body(obj.body, { headers });
+  if (!email) return c.json({ error: 'not found' }, 404);
+  if (!email.body_html && !email.body_text && email.r2_key) {
+    try {
+      const object = await c.env.INBOX_BUCKET.get(email.r2_key);
+      if (object) {
+        const parsed = await parseEmail(new Uint8Array(await object.arrayBuffer()));
+        email.body_html = parsed.bodyHtml || '';
+        email.body_text = parsed.bodyText || '';
+      }
+    } catch {
+      console.error('raw_reparse_failed', { email_id: id });
+    }
+  }
+  c.header('Cache-Control', 'private, max-age=300');
+  return c.json(sanitizeEmailRow(email));
 });
 
-// Mark read/flagged
-app.patch('/api/emails/:id', async (c) => {
+app.get('/api/emails/:id/attachments', async c => {
   const id = c.req.param('id');
-  const body: { is_read?: boolean; is_flagged?: boolean } = await c.req.json();
-  if (body.is_read !== undefined) await markRead(c.env.INBOX_DB, id, body.is_read);
-  if (body.is_flagged !== undefined) await markFlagged(c.env.INBOX_DB, id, body.is_flagged);
+  if (!validOpaqueId(id)) return c.json({ error: 'invalid id' }, 400);
+  const result = await getAttachments(c.env.INBOX_DB, id);
+  return c.json(((result.results || []) as AttachmentRow[]).map(publicAttachment));
+});
+
+app.get('/api/attachments/:id', async c => {
+  const id = c.req.param('id');
+  if (!validOpaqueId(id)) return c.json({ error: 'invalid id' }, 400);
+  const attachment = await getAttachment(c.env.INBOX_DB, id);
+  if (!attachment) return c.json({ error: 'not found' }, 404);
+  const object = await c.env.INBOX_BUCKET.get(attachment.r2_key);
+  if (!object) return c.json({ error: 'not found' }, 404);
+  const headers = new Headers();
+  setDownloadHeaders(headers, attachment.filename || 'attachment', attachment.content_type);
+  return c.body(object.body, { headers });
+});
+
+app.get('/api/emails/:id/raw', async c => {
+  const id = c.req.param('id');
+  if (!validOpaqueId(id)) return c.json({ error: 'invalid id' }, 400);
+  const email = await getEmail(c.env.INBOX_DB, id);
+  if (!email?.r2_key) return c.json({ error: 'not found' }, 404);
+  const object = await c.env.INBOX_BUCKET.get(email.r2_key);
+  if (!object) return c.json({ error: 'raw email not found' }, 404);
+  const headers = new Headers();
+  setDownloadHeaders(headers, `${email.subject || 'email'}.eml`, 'message/rfc822');
+  return c.body(object.body, { headers });
+});
+
+app.patch('/api/emails/:id', async c => {
+  const id = c.req.param('id');
+  if (!validOpaqueId(id)) return c.json({ error: 'invalid id' }, 400);
+  const body = await c.req.json<{ is_read?: unknown; is_flagged?: unknown }>();
+  if (body.is_read !== undefined && typeof body.is_read !== 'boolean') return c.json({ error: 'invalid is_read' }, 400);
+  if (body.is_flagged !== undefined && typeof body.is_flagged !== 'boolean') return c.json({ error: 'invalid is_flagged' }, 400);
+  if (typeof body.is_read === 'boolean') await markRead(c.env.INBOX_DB, id, body.is_read);
+  if (typeof body.is_flagged === 'boolean') await markFlagged(c.env.INBOX_DB, id, body.is_flagged);
   return c.json({ ok: true });
 });
 
-// Delete email (soft delete)
-app.delete('/api/emails/:id', async (c) => {
+app.delete('/api/emails/:id', async c => {
   const id = c.req.param('id');
+  if (!validOpaqueId(id)) return c.json({ error: 'invalid id' }, 400);
   await deleteEmail(c.env.INBOX_DB, id);
   return c.json({ ok: true });
 });
 
-// Restore email
-app.post('/api/emails/:id/restore', async (c) => {
+app.post('/api/emails/:id/restore', async c => {
   const id = c.req.param('id');
+  if (!validOpaqueId(id)) return c.json({ error: 'invalid id' }, 400);
   await restoreEmail(c.env.INBOX_DB, id);
   return c.json({ ok: true });
 });
 
-// ============================================================
-// Worker entry
-// ============================================================
+app.onError((error, c) => {
+  if (error instanceof InvalidCursorError || ['invalid_limit', 'query_too_long'].includes(error.message)) {
+    return c.json({ error: error.message }, 400);
+  }
+  console.error('http_request_failed');
+  return c.json({ error: 'internal error' }, 500);
+});
+
 export default {
   async email(message: ForwardableEmailMessage, env: Env): Promise<void> {
     await handleEmail(message, env);
   },
-
   async fetch(request: Request, env: Env): Promise<Response> {
     return app.fetch(request, env);
   },
-};
+} satisfies ExportedHandler<Env>;
