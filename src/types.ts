@@ -44,7 +44,10 @@ export interface AttachmentRow {
   created_at?: string;
 }
 
-export type PublicAttachment = Omit<AttachmentRow, 'r2_key' | 'storage_state'>;
+export type ObjectStatus = 'available' | 'missing' | 'unknown';
+export type PublicAttachment = Omit<AttachmentRow, 'r2_key' | 'storage_state'> & {
+  object_status: ObjectStatus;
+};
 
 export interface Env {
   INBOX_DB: D1Database;

@@ -29,17 +29,32 @@ function objectBody(content = 'abc'): R2ObjectBody {
   } as unknown as R2ObjectBody;
 }
 
-function apiEnv(options: { first?: unknown; all?: unknown[]; object?: R2ObjectBody | null } = {}): Env {
+function apiEnv(options: {
+  first?: unknown;
+  all?: unknown[];
+  object?: R2ObjectBody | null;
+  objectError?: Error;
+  head?: R2Object | null | ((key: string) => R2Object | null | Promise<R2Object | null>);
+} = {}): Env {
   const statement = {
     bind: vi.fn().mockReturnThis(), run: vi.fn().mockResolvedValue({ success: true }),
     first: vi.fn().mockResolvedValue(options.first ?? null),
     all: vi.fn().mockResolvedValue({ results: options.all || [] }),
   } as any;
+  const defaultObject = objectBody();
   return {
     INBOX_DB: { prepare: vi.fn().mockReturnValue(statement), batch: vi.fn().mockResolvedValue([]) } as any,
     INBOX_BUCKET: {
-      get: vi.fn().mockResolvedValue(options.object === undefined ? objectBody() : options.object),
-      put: vi.fn(), delete: vi.fn(), head: vi.fn(), list: vi.fn(), createMultipartUpload: vi.fn(), resumeMultipartUpload: vi.fn(),
+      get: vi.fn().mockImplementation(async () => {
+        if (options.objectError) throw options.objectError;
+        return options.object === undefined ? defaultObject : options.object;
+      }),
+      put: vi.fn(), delete: vi.fn(),
+      head: vi.fn().mockImplementation(async (key: string) => {
+        if (typeof options.head === 'function') return options.head(key);
+        return options.head === undefined ? defaultObject : options.head;
+      }),
+      list: vi.fn(), createMultipartUpload: vi.fn(), resumeMultipartUpload: vi.fn(),
     } as any,
   };
 }
@@ -92,10 +107,25 @@ describe('safe API representation', () => {
   it('does not return r2_key from attachment metadata API', async () => {
     const response = await app.fetch(new Request(`https://mail.example/api/emails/${id}/attachments`), apiEnv({ all: [attachment] }));
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
     const data = await response.json() as Array<Record<string, unknown>>;
     expect(data[0].id).toBe(attachment.id);
+    expect(data[0].object_status).toBe('available');
     expect(data[0]).not.toHaveProperty('r2_key');
     expect(JSON.stringify(data)).not.toContain('internal-secret');
+  });
+
+  it('reports missing and unknown attachment object states without leaking keys', async () => {
+    const missing = await app.fetch(
+      new Request(`https://mail.example/api/emails/${id}/attachments`),
+      apiEnv({ all: [attachment], head: null }),
+    );
+    const unknown = await app.fetch(
+      new Request(`https://mail.example/api/emails/${id}/attachments`),
+      apiEnv({ all: [attachment], head: async () => { throw new Error('R2 unavailable'); } }),
+    );
+    expect((await missing.json() as Array<Record<string, unknown>>)[0].object_status).toBe('missing');
+    expect((await unknown.json() as Array<Record<string, unknown>>)[0].object_status).toBe('unknown');
   });
 
   it('downloads attachments by stable id with forced private no-store headers', async () => {
@@ -114,6 +144,79 @@ describe('safe API representation', () => {
     expect(response.headers.get('Content-Disposition')).toMatch(/^attachment;/);
     expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+  });
+
+  it('returns non-cacheable 404 when D1 metadata does not exist', async () => {
+    const attachmentResponse = await app.fetch(
+      new Request(`https://mail.example/api/attachments/${attachment.id}`),
+      apiEnv(),
+    );
+    const rawResponse = await app.fetch(
+      new Request(`https://mail.example/api/emails/${id}/raw`),
+      apiEnv(),
+    );
+    expect(attachmentResponse.status).toBe(404);
+    expect(rawResponse.status).toBe(404);
+    expect(attachmentResponse.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(rawResponse.headers.get('Cache-Control')).toBe('private, no-store');
+  });
+
+  it('returns object_missing when D1 metadata exists but R2 content is absent', async () => {
+    const attachmentResponse = await app.fetch(
+      new Request(`https://mail.example/api/attachments/${attachment.id}`),
+      apiEnv({ first: attachment, object: null }),
+    );
+    const rawResponse = await app.fetch(
+      new Request(`https://mail.example/api/emails/${id}/raw`),
+      apiEnv({ first: email, object: null }),
+    );
+    expect(attachmentResponse.status).toBe(410);
+    expect(rawResponse.status).toBe(410);
+    expect(attachmentResponse.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(rawResponse.headers.get('Cache-Control')).toBe('private, no-store');
+    expect((await attachmentResponse.json() as { code: string }).code).toBe('object_missing');
+    expect((await rawResponse.json() as { code: string }).code).toBe('object_missing');
+  });
+
+  it('reports transient R2 read failures as retryable service errors', async () => {
+    const response = await app.fetch(
+      new Request(`https://mail.example/api/attachments/${attachment.id}`),
+      apiEnv({ first: attachment, objectError: new Error('R2 unavailable') }),
+    );
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect((await response.json() as { code: string }).code).toBe('storage_unavailable');
+  });
+
+  it('reconciles each object independently and separates missing from check errors', async () => {
+    const references = [
+      { id: 'present01', kind: 'raw', object_key: 'raw/present.eml' },
+      { id: 'missing01', kind: 'raw', object_key: 'raw/missing.eml' },
+      { id: 'failure01', kind: 'attachment', object_key: 'attachments/failure' },
+    ];
+    const response = await app.fetch(
+      new Request('https://mail.example/api/maintenance/reconcile'),
+      apiEnv({
+        all: references,
+        head: async key => {
+          if (key.includes('failure')) throw new Error('R2 unavailable');
+          return key.includes('missing') ? null : objectBody();
+        },
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(await response.json()).toEqual({
+      checked: 3,
+      present: 1,
+      missingCount: 1,
+      errorCount: 1,
+      missing: [{ id: 'missing01', kind: 'raw' }],
+      errors: [{ id: 'failure01', kind: 'attachment' }],
+      cursor: null,
+      complete: true,
+      cleanup: { pending: 0, failed: 0, readyEmails: 0 },
+    });
   });
 
   it('requires an explicit destructive confirmation for purge', async () => {

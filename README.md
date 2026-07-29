@@ -20,7 +20,7 @@ D1 与 R2 不共享事务。收件使用以下可重试流程：
 3. 第一代使用 `raw/<email-id>.eml`、`attachments/<attachment-id>`；已完成永久清理后的重投使用确定性的 `.g<generation>` 后缀。发送方文件名只保存在 D1，旧清理任务因此无法删除新一代对象。
 4. 所有对象写入成功后，D1 在同一事务中写入单调 activation event，并把附件、邮件和 registry 切换为 `active`。中途失败保持 `pending`，同一代重试覆盖相同对象且不会重复展示。
 
-永久删除先把带 generation 的对象引用写入 `cleanup_outbox`，再删除 D1 邮件记录。清理进程必须按整封邮件原子取得 claim/lease 后才能删除 R2；未 claim 的清理可被重投原子取消，已 claim 的清理阻止重投，完成后重投递增 generation。R2 删除失败会释放 claim、保留 outbox 并退避重试。只读对账接口按页检查活动 D1 引用是否存在对应 R2 对象。普通删除只是软删除，恢复不触碰 R2。
+永久删除先把带 generation 的对象引用写入 `cleanup_outbox`，再删除 D1 邮件记录。清理进程必须按整封邮件原子取得 claim/lease 后才能删除 R2；未 claim 的清理可被重投原子取消，已 claim 的清理阻止重投，完成后重投递增 generation。R2 删除失败会释放 claim、保留 outbox 并退避重试。只读对账接口按页检查活动 D1 引用，分别返回 present、missing 和检查错误计数；检查故障不会被误报为对象缺失。附件列表只暴露 `available`、`missing` 或 `unknown` 状态，不返回对象 key。D1 记录存在但 R2 内容缺失时下载返回不缓存的 `410 object_missing`，暂时存储故障返回 `503 storage_unavailable`。普通删除只是软删除，恢复不触碰 R2。
 
 
 清理端点默认每次只 claim 一封邮件；即使邮件包含 25 个附件，单次调用仍保持在免费计划的查询和子请求预算内。响应中的 `canContinue`/`pending.readyEmails` 表示是否需要继续调用。只有在明确采用更高平台预算时才应提高 `CLEANUP_EMAILS_PER_RUN`。
