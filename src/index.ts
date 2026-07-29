@@ -109,6 +109,7 @@ function publicAttachment(row: AttachmentRow): PublicAttachment {
     content_type: row.content_type,
     size: row.size,
     created_at: row.created_at,
+    object_status: 'unknown',
   };
 }
 
@@ -395,10 +396,29 @@ app.get('/api/maintenance/reconcile', async c => {
   const limit = parsePageLimit(c.req.query('limit'), Math.min(limits.pageSize, 100), 50);
   const page = await listObjectReferences(c.env.INBOX_DB, c.req.query('cursor'), limit);
   const missing: Array<{ id: string; kind: string }> = [];
+  const errors: Array<{ id: string; kind: string }> = [];
+  let present = 0;
   await mapWithConcurrency(page.items, limits.objectConcurrency, async item => {
-    if (!await c.env.INBOX_BUCKET.head(item.object_key)) missing.push({ id: item.id, kind: item.kind });
+    try {
+      if (await c.env.INBOX_BUCKET.head(item.object_key)) present++;
+      else missing.push({ id: item.id, kind: item.kind });
+    } catch {
+      errors.push({ id: item.id, kind: item.kind });
+      console.error('reconcile_object_check_failed', { object_id: item.id, object_kind: item.kind });
+    }
   });
-  return c.json({ checked: page.items.length, missing, cursor: page.cursor, cleanup: await cleanupStatus(c.env.INBOX_DB) });
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({
+    checked: page.items.length,
+    present,
+    missingCount: missing.length,
+    errorCount: errors.length,
+    missing,
+    errors,
+    cursor: page.cursor,
+    complete: page.cursor === null,
+    cleanup: await cleanupStatus(c.env.INBOX_DB),
+  });
 });
 
 app.get('/api/domains', async c => c.json((await getDomainsWithRecipients(c.env.INBOX_DB)).domains));
@@ -409,15 +429,24 @@ app.get('/api/emails/:id', async c => {
   const email = await getEmail(c.env.INBOX_DB, id);
   if (!email) return c.json({ error: 'not found' }, 404);
   if (!email.body_html && !email.body_text && email.r2_key) {
+    let object: R2ObjectBody | null = null;
+    let readFailed = false;
     try {
-      const object = await c.env.INBOX_BUCKET.get(email.r2_key);
-      if (object) {
+      object = await c.env.INBOX_BUCKET.get(email.r2_key);
+    } catch {
+      readFailed = true;
+      console.error('storage_object_read_failed', { object_id: id, object_kind: 'raw' });
+    }
+    if (!object && !readFailed) {
+      console.warn('storage_object_missing', { object_id: id, object_kind: 'raw' });
+    } else if (object) {
+      try {
         const parsed = await parseEmail(new Uint8Array(await object.arrayBuffer()));
         email.body_html = parsed.bodyHtml || '';
         email.body_text = parsed.bodyText || '';
+      } catch {
+        console.error('raw_reparse_failed', { email_id: id });
       }
-    } catch {
-      console.error('raw_reparse_failed', { email_id: id });
     }
   }
   c.header('Cache-Control', 'private, max-age=300');
@@ -428,16 +457,41 @@ app.get('/api/emails/:id/attachments', async c => {
   const id = c.req.param('id');
   if (!validOpaqueId(id)) return c.json({ error: 'invalid id' }, 400);
   const result = await getAttachments(c.env.INBOX_DB, id);
-  return c.json(((result.results || []) as AttachmentRow[]).map(publicAttachment));
+  const rows = (result.results || []) as AttachmentRow[];
+  const attachments = rows.map(publicAttachment);
+  const limits = getLimits(c.env);
+  await mapWithConcurrency(rows, limits.objectConcurrency, async (row, index) => {
+    try {
+      attachments[index].object_status = await c.env.INBOX_BUCKET.head(row.r2_key) ? 'available' : 'missing';
+    } catch {
+      console.error('storage_object_check_failed', { object_id: row.id, object_kind: 'attachment' });
+    }
+  });
+  c.header('Cache-Control', 'private, no-store');
+  return c.json(attachments);
 });
 
 app.get('/api/attachments/:id', async c => {
   const id = c.req.param('id');
   if (!validOpaqueId(id)) return c.json({ error: 'invalid id' }, 400);
   const attachment = await getAttachment(c.env.INBOX_DB, id);
-  if (!attachment) return c.json({ error: 'not found' }, 404);
-  const object = await c.env.INBOX_BUCKET.get(attachment.r2_key);
-  if (!object) return c.json({ error: 'not found' }, 404);
+  if (!attachment) {
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ error: 'not found' }, 404);
+  }
+  let object: R2ObjectBody | null;
+  try {
+    object = await c.env.INBOX_BUCKET.get(attachment.r2_key);
+  } catch {
+    console.error('storage_object_read_failed', { object_id: id, object_kind: 'attachment' });
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ error: 'storage temporarily unavailable', code: 'storage_unavailable' }, 503);
+  }
+  if (!object) {
+    console.warn('storage_object_missing', { object_id: id, object_kind: 'attachment' });
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ error: 'attachment content unavailable', code: 'object_missing' }, 410);
+  }
   const headers = new Headers();
   setDownloadHeaders(headers, attachment.filename || 'attachment', attachment.content_type);
   return c.body(object.body, { headers });
@@ -447,9 +501,28 @@ app.get('/api/emails/:id/raw', async c => {
   const id = c.req.param('id');
   if (!validOpaqueId(id)) return c.json({ error: 'invalid id' }, 400);
   const email = await getEmail(c.env.INBOX_DB, id);
-  if (!email?.r2_key) return c.json({ error: 'not found' }, 404);
-  const object = await c.env.INBOX_BUCKET.get(email.r2_key);
-  if (!object) return c.json({ error: 'raw email not found' }, 404);
+  if (!email) {
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ error: 'not found' }, 404);
+  }
+  if (!email.r2_key) {
+    console.warn('storage_object_missing', { object_id: id, object_kind: 'raw' });
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ error: 'raw email content unavailable', code: 'object_missing' }, 410);
+  }
+  let object: R2ObjectBody | null;
+  try {
+    object = await c.env.INBOX_BUCKET.get(email.r2_key);
+  } catch {
+    console.error('storage_object_read_failed', { object_id: id, object_kind: 'raw' });
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ error: 'storage temporarily unavailable', code: 'storage_unavailable' }, 503);
+  }
+  if (!object) {
+    console.warn('storage_object_missing', { object_id: id, object_kind: 'raw' });
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ error: 'raw email content unavailable', code: 'object_missing' }, 410);
+  }
   const headers = new Headers();
   setDownloadHeaders(headers, `${email.subject || 'email'}.eml`, 'message/rfc822');
   return c.body(object.body, { headers });

@@ -16,9 +16,13 @@ import { drainPollingPages, scripts } from './scripts';
     expect(scripts).not.toContain('media-src data:" + remoteSources');
   });
 
-  it('downloads attachments by id rather than storage key', () => {
+  it('downloads available attachments by id and disables unavailable objects', () => {
     expect(scripts).toContain("encodeURIComponent(att.id)");
     expect(scripts).not.toContain("encodeURIComponent(att.r2_key)");
+    expect(scripts).toContain("status !== 'available'");
+    expect(scripts).toContain('历史文件缺失');
+    expect(scripts).toContain('存储状态未知');
+    expect(scripts).toContain('attachment-unavailable');
   });
 
   it('always renders body_text as escaped plain text', () => {

@@ -373,6 +373,18 @@ export const styles = `
     border-color: var(--border-strong);
     color: var(--text-1);
   }
+  .attachment-unavailable,
+  .attachment-unavailable:hover {
+    cursor: not-allowed;
+    border-color: var(--border);
+    color: var(--text-3);
+    opacity: 0.72;
+  }
+  .attachment-status {
+    flex: 0 0 auto;
+    color: #a15c45;
+    font-size: 10px;
+  }
   .attachment-icon { flex: 0 0 auto; }
   .attachment-name {
     min-width: 0;

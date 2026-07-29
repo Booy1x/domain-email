@@ -569,11 +569,19 @@ function loadEmailAttachments(id, requestSeq) {
       if (!el || !attachments || attachments.length === 0) return;
       el.innerHTML = '<div class="attachment-title">附件</div>' +
         attachments.map(function(att) {
-          var href = '/api/attachments/' + encodeURIComponent(att.id);
-          return '<a class="attachment-item" href="' + href + '" target="_blank" rel="noopener noreferrer">' +
+          var status = att.object_status || 'unknown';
+          var statusText = status === 'missing' ? '历史文件缺失' : '存储状态未知';
+          var content =
             '<span class="attachment-icon">📎</span>' +
             '<span class="attachment-name">' + esc(att.filename || '未命名附件') + '</span>' +
-            '<span class="attachment-size">' + esc(formatBytes(att.size || 0)) + '</span>' +
+            '<span class="attachment-size">' + esc(formatBytes(att.size || 0)) + '</span>';
+          if (status !== 'available') {
+            return '<span class="attachment-item attachment-unavailable" aria-disabled="true" title="' + statusText + '">' +
+              content + '<span class="attachment-status">' + statusText + '</span></span>';
+          }
+          var href = '/api/attachments/' + encodeURIComponent(att.id);
+          return '<a class="attachment-item" href="' + href + '" target="_blank" rel="noopener noreferrer">' +
+            content +
           '</a>';
         }).join('');
     })
