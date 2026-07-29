@@ -88,8 +88,9 @@ CI 会在隔离本地 D1 上分阶段应用全量 migration，并用旧 schema �
 
 仓库内 `npm run deploy` 被刻意禁用，不能手工部署或执行远程 migration。`scripts/configure-domains.sh` 同样默认拒绝运行；它会启用 Email Routing 并替换现有 catch-all，只有核对账号、zone、Worker 与回滚方案后提供 `--confirm=REPLACE_EMAIL_ROUTING` 才会发起任何 API 请求。生产 environment 需要：
 
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_API_TOKEN`：仅供远程 D1 migration 使用。
+- `CLOUDFLARE_WORKERS_API_TOKEN`：仅供 Worker 上传和 `525458.xyz` route 同步使用。
+- `CLOUDFLARE_ACCOUNT_ID`：目标账户标识。
 
 不要把凭据、`.wrangler/`、备份或原始邮件提交到 Git。
 
