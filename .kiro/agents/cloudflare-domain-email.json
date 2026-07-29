@@ -1,0 +1,97 @@
+{
+  "name": "cloudflare-domain-email",
+  "description": "Develops and operates the domain-email Cloudflare Worker with D1, R2, Email Routing, Access, Builds, and Observability.",
+  "prompt": "You are the project agent for domain-email, a Cloudflare Workers catch-all mailbox. Work from repository evidence and Cloudflare documentation. Prefer the installed Cloudflare MCP servers over guessing current platform behavior. Preserve Cloudflare Access, email delivery, D1 data, and R2 objects. Treat production deploys, remote migrations, resource deletion, routing changes, Access changes, and secrets as high-impact operations: explain impact and wait for explicit confirmation. Never expose tokens, message contents, addresses, or attachment data in logs or responses. Make focused changes, then run npm run type-check, npm test, and npx wrangler deploy --dry-run as applicable. Production deployment is owned by the GitHub Actions workflow; do not deploy manually unless the user explicitly requests it.",
+  "mcpServers": {
+    "cloudflare": {
+      "url": "https://mcp.cloudflare.com/mcp",
+      "timeout": 120000
+    },
+    "cloudflare-docs": {
+      "url": "https://docs.mcp.cloudflare.com/mcp",
+      "timeout": 120000
+    },
+    "cloudflare-bindings": {
+      "url": "https://bindings.mcp.cloudflare.com/mcp",
+      "timeout": 120000
+    },
+    "cloudflare-builds": {
+      "url": "https://builds.mcp.cloudflare.com/mcp",
+      "timeout": 120000
+    },
+    "cloudflare-observability": {
+      "url": "https://observability.mcp.cloudflare.com/mcp",
+      "timeout": 120000
+    }
+  },
+  "tools": ["*"],
+  "allowedTools": [
+    "read",
+    "grep",
+    "glob",
+    "code",
+    "todo_list",
+    "@cloudflare-docs",
+    "@cloudflare-builds",
+    "@cloudflare-observability"
+  ],
+  "toolsSettings": {
+    "write": {
+      "allowedPaths": [
+        ".kiro/**",
+        ".github/**",
+        "src/**",
+        "scripts/**",
+        "migrations/**",
+        "README.md",
+        "package.json",
+        "package-lock.json",
+        "tsconfig.json",
+        "vitest.config.ts",
+        "wrangler.jsonc"
+      ],
+      "deniedPaths": [
+        ".env*",
+        ".wrangler/**",
+        "raw/**",
+        "node_modules/**"
+      ]
+    },
+    "shell": {
+      "allowedCommands": [
+        "^git (status|diff|log|show|branch)( .*)?$",
+        "^npm test( .*)?$",
+        "^npm run (test|type-check)( .*)?$",
+        "^npx wrangler deploy --dry-run( .*)?$",
+        "^npx wrangler (whoami|types)( .*)?$",
+        "^kiro-cli mcp list( .*)?$",
+        "^kiro-cli agent (list|validate)( .*)?$"
+      ],
+      "deniedCommands": [
+        "^sudo( .*)?$",
+        "^rm -rf( .*)?$",
+        "^git reset --hard( .*)?$",
+        "^git clean -f( .*)?$",
+        "^git push .*--force( .*)?$"
+      ],
+      "autoAllowReadonly": true,
+      "denyByDefault": false
+    },
+    "web_fetch": {
+      "trusted": [
+        "https://developers\\.cloudflare\\.com/.*",
+        "https://github\\.com/cloudflare/.*"
+      ]
+    }
+  },
+  "resources": [
+    "file://README.md",
+    "file://package.json",
+    "file://wrangler.jsonc",
+    "file://migrations/*.sql",
+    "file://.kiro/steering/*.md",
+    "skill://.kiro/skills/**/SKILL.md"
+  ],
+  "keyboardShortcut": "ctrl+shift+c",
+  "welcomeMessage": "Cloudflare domain-email agent ready. I will protect production data, use the installed Cloudflare MCPs, and validate changes before deployment."
+}

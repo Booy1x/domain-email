@@ -464,6 +464,20 @@ export const styles = `
   /* ── Breadcrumb ── */
   .breadcrumb-bar {
     display: none; align-items: center; gap: 6px;
+
+  .remote-content-button {
+    align-self: flex-start;
+    margin: 0 0 12px;
+    padding: 7px 11px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: var(--bg-surface);
+    color: var(--accent-text);
+    font: 12px/1.4 'DM Sans', sans-serif;
+    cursor: pointer;
+  }
+  .remote-content-button:hover { background: var(--accent-dim); }
+  .remote-content-button:disabled { cursor: wait; opacity: 0.65; }
     padding: 8px 24px;
     border-bottom: 1px solid var(--border);
     background: var(--bg-surface);

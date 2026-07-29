@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { streamToBuffer } from './mime';
+import { parseEmail, streamToBuffer } from './mime';
 
 // ═══════════════════════════════════════════════════════════════
 // streamToBuffer tests
@@ -97,5 +97,49 @@ describe('concatUint8Array (via streamToBuffer)', () => {
     const result = await streamToBuffer(stream);
     expect(result.length).toBe(size);
     expect(result).toEqual(data);
+  });
+});
+
+
+describe('streamToBuffer size limit', () => {
+  it('throws and stops buffering when the limit is exceeded', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(6));
+        controller.enqueue(new Uint8Array(6));
+        controller.close();
+      },
+    });
+    await expect(streamToBuffer(stream, 10)).rejects.toThrow('payload_too_large');
+  });
+});
+
+
+describe('parseEmail attachments', () => {
+  it('retains an attachment without a sender-provided filename', async () => {
+    const raw = new TextEncoder().encode([
+      'From: sender@example.net',
+      'To: user@example.com',
+      'Subject: anonymous attachment',
+      'MIME-Version: 1.0',
+      'Content-Type: multipart/mixed; boundary="boundary"',
+      '',
+      '--boundary',
+      'Content-Type: text/plain',
+      '',
+      'body',
+      '--boundary',
+      'Content-Type: application/octet-stream',
+      'Content-Disposition: attachment',
+      'Content-Transfer-Encoding: base64',
+      '',
+      'AQID',
+      '--boundary--',
+      '',
+    ].join('\r\n'));
+    const parsed = await parseEmail(raw);
+    expect(parsed.attachments).toHaveLength(1);
+    expect(parsed.attachments[0].filename).toBe('attachment-1');
+    expect(parsed.attachments[0].content).toEqual(new Uint8Array([1, 2, 3]));
   });
 });

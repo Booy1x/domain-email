@@ -2,7 +2,10 @@
 # Batch configure Cloudflare Email Routing for multiple domains
 #
 # Usage:
-#   ./configure-domains.sh domains.txt
+#   ./configure-domains.sh domains.txt --confirm=REPLACE_EMAIL_ROUTING
+#
+# This operation enables Email Routing and replaces every existing catch-all
+# rule in the listed zones. It is intentionally blocked by default.
 #
 # Environment variables (optional — will prompt if not set):
 #   CF_API_TOKEN   — Cloudflare API token (Zone:DNS:Edit + Account:Email Routing:Edit)
@@ -15,8 +18,16 @@
 set -euo pipefail
 
 CF_API="${CF_API:-https://api.cloudflare.com/client/v4}"
-TARGET_WORKER="${TARGET_WORKER:-catch-all-mail}"
-DOMAINS_FILE="${1:?Usage: $0 <domains-file>}"
+TARGET_WORKER="${TARGET_WORKER:-domain-inbox}"
+DOMAINS_FILE="${1:?Usage: $0 <domains-file> --confirm=REPLACE_EMAIL_ROUTING}"
+CONFIRMATION="${2:-}"
+
+if [ "$CONFIRMATION" != "--confirm=REPLACE_EMAIL_ROUTING" ]; then
+  echo "Refusing to change Email Routing. This operation enables routing, deletes existing catch-all rules, and creates replacements."
+  echo "After verifying account, zones, Worker, and rollback plan, re-run with:"
+  echo "  $0 <domains-file> --confirm=REPLACE_EMAIL_ROUTING"
+  exit 2
+fi
 
 if [ ! -f "$DOMAINS_FILE" ]; then
   echo "Error: $DOMAINS_FILE not found"
