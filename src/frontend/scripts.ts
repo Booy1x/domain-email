@@ -72,6 +72,7 @@ function searchMails() {
   } else if (!state.domain) {
     loadHomeEmails();
   }
+  syncHash();
 }
 var searchTimer = null;
 function toggleSearchClear() {
@@ -158,53 +159,74 @@ function updateEmailReadState(id, isRead) {
 }
 
 document.querySelector('.domain-list').addEventListener('click', function(e) {
+  var copyBtn = e.target.closest('.rcpt-copy');
+  if (copyBtn) {
+    copyText(copyBtn.dataset.addr || '', copyBtn);
+    return;
+  }
+
   var rcptItem = e.target.closest('.rcpt-item');
   if (rcptItem) {
-    e.stopPropagation();
-    var domain = rcptItem.dataset.domain;
-    var rcpt = rcptItem.dataset.rcpt;
-    document.querySelectorAll('.rcpt-item').forEach(function(el) { el.classList.remove('active'); });
-    document.querySelectorAll('.domain-tree').forEach(function(el) { el.classList.remove('active'); });
-    rcptItem.classList.add('active');
-    var parentTree = rcptItem.closest('.domain-tree');
-    if (parentTree) parentTree.classList.add('active');
-    state.domain = domain;
-    state.rcptUser = rcpt;
-    state.selectedId = null;
-    state.emails = []; state.cursor = null; state.hasMore = true; state.totalLoaded = 0;
-    state.view = 'rcpt';
-    updateBreadcrumb();
-    document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
-    document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
-    loadEmails(true);
+    showRcptView(rcptItem.dataset.domain, rcptItem.dataset.rcpt);
     return;
   }
 
   var domainHeader = e.target.closest('.domain-tree-header');
   if (domainHeader) {
-    e.stopPropagation();
     var tree = domainHeader.closest('.domain-tree');
-    var domain = tree.dataset.domain;
     var isOpen = tree.classList.contains('open');
     document.querySelectorAll('.domain-tree').forEach(function(el) { el.classList.remove('open'); });
-    if (!isOpen) {
-      tree.classList.add('open');
-    }
-    document.querySelectorAll('.rcpt-item').forEach(function(el) { el.classList.remove('active'); });
-    document.querySelectorAll('.domain-tree').forEach(function(el) { el.classList.remove('active'); });
-    tree.classList.add('active');
-    state.domain = domain;
-    state.rcptUser = '';
-    state.selectedId = null;
-    state.emails = []; state.cursor = null; state.hasMore = true; state.totalLoaded = 0;
-    state.view = 'domain';
-    updateBreadcrumb();
-    document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
-    document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
-    loadEmails(true);
+    if (!isOpen) tree.classList.add('open');
+    showDomainView(tree.dataset.domain);
     return;
   }
 });
+
+function activateSidebar(domain, rcpt, openTree) {
+  document.querySelectorAll('.rcpt-item').forEach(function(el) { el.classList.remove('active'); });
+  document.querySelectorAll('.domain-tree').forEach(function(el) { el.classList.remove('active'); });
+  document.querySelectorAll('.domain-tree').forEach(function(tree) {
+    if (tree.dataset.domain !== domain) return;
+    tree.classList.add('active');
+    if (openTree) tree.classList.add('open');
+    if (rcpt) {
+      tree.querySelectorAll('.rcpt-item').forEach(function(item) {
+        if (item.dataset.rcpt === rcpt) item.classList.add('active');
+      });
+    }
+  });
+}
+
+function resetListAndPreview() {
+  document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
+  document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
+}
+
+function showDomainView(domain) {
+  activateSidebar(domain, '', false);
+  state.domain = domain;
+  state.rcptUser = '';
+  state.selectedId = null;
+  state.emails = []; state.cursor = null; state.hasMore = true; state.totalLoaded = 0;
+  state.view = 'domain';
+  updateBreadcrumb();
+  resetListAndPreview();
+  loadEmails(true);
+  syncHash();
+}
+
+function showRcptView(domain, rcpt) {
+  activateSidebar(domain, rcpt, true);
+  state.domain = domain;
+  state.rcptUser = rcpt;
+  state.selectedId = null;
+  state.emails = []; state.cursor = null; state.hasMore = true; state.totalLoaded = 0;
+  state.view = 'rcpt';
+  updateBreadcrumb();
+  resetListAndPreview();
+  loadEmails(true);
+  syncHash();
+}
 
 var breadcrumbBar = null;
 function updateBreadcrumb() {
@@ -242,9 +264,11 @@ function loadHomeEmails() {
   state.selectedId = null;
   state.totalLoaded = 0;
   state.view = 'home';
+  activateSidebar('', '', false);
   updateBreadcrumb();
   document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
   loadEmails(true);
+  syncHash();
 }
 
 document.getElementById('email-list').addEventListener('click', function(e) {
@@ -362,6 +386,7 @@ document.getElementById('btn-trash').addEventListener('click', function() {
   document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
   updateBreadcrumb();
   loadTrash(true);
+  syncHash();
 });
 document.getElementById('btn-back').addEventListener('click', function() {
   var prev = previousInboxState;
@@ -389,7 +414,9 @@ document.getElementById('btn-back').addEventListener('click', function() {
   if (state.view === 'home') {
     loadHomeEmails();
   } else {
+    activateSidebar(state.domain, state.rcptUser, state.view === 'rcpt');
     loadEmails(true);
+    syncHash();
   }
 });
 
@@ -545,6 +572,7 @@ function loadEmailDetail(id) {
               '<span class="from">' + esc(email.mail_from) + '</span>' +
               '<span class="arrow">→</span>' +
               '<span>' + esc(email.rcpt_to) + '</span>' +
+              '<button class="meta-copy" data-addr="' + esc(email.rcpt_to).replace(/"/g, '&quot;') + '" title="复制地址"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>' +
             '</div>' +
             '<div class="preview-date">' + new Date(email.date).toLocaleString('zh-CN') + '</div>' +
           '</div>' +
@@ -775,6 +803,152 @@ function mountEmailIframe(cardId, srcdoc, rawHtml) {
   }, 0);
 }
 
+function fallbackCopy(text) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (err) {}
+  document.body.removeChild(ta);
+}
+
+function copyText(text, btn) {
+  var done = function() {
+    if (!btn || btn.dataset.copying) return;
+    btn.dataset.copying = '1';
+    var orig = btn.innerHTML;
+    btn.classList.add('copied');
+    btn.innerHTML = '✓';
+    setTimeout(function() {
+      btn.classList.remove('copied');
+      btn.innerHTML = orig;
+      delete btn.dataset.copying;
+    }, 1200);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, function() { fallbackCopy(text); done(); });
+  } else {
+    fallbackCopy(text);
+    done();
+  }
+}
+
+document.getElementById('preview').addEventListener('click', function(e) {
+  var btn = e.target.closest('.meta-copy');
+  if (btn) copyText(btn.dataset.addr || '', btn);
+});
+
+var applyingHash = false;
+
+function buildHash() {
+  if (state.view === 'domain') return '#/d/' + encodeURIComponent(state.domain);
+  if (state.view === 'rcpt') return '#/d/' + encodeURIComponent(state.domain) + '/' + encodeURIComponent(state.rcptUser);
+  if (state.view === 'search') return '#/s/' + encodeURIComponent(document.getElementById('search').value.trim());
+  if (state.view === 'trash') return '#/trash';
+  return '#/';
+}
+
+function syncHash() {
+  if (applyingHash) return;
+  var h = buildHash();
+  if (h === '#/' && (location.hash === '' || location.hash === '#')) return;
+  if (location.hash !== h) location.hash = h;
+}
+
+function applyHash() {
+  applyingHash = true;
+  try {
+    var raw = location.hash;
+    if (raw.charAt(0) === '#') raw = raw.slice(1);
+    if (raw.charAt(0) === '/') raw = raw.slice(1);
+    var parts = raw.split('/');
+    var first = parts[0] || '';
+    if (trashMode && first !== 'trash') {
+      trashMode = false;
+      previousInboxState = null;
+      state.loading = false;
+      listRequestSeq++;
+      detailRequestSeq++;
+      document.getElementById('btn-trash').style.display = 'flex';
+      document.getElementById('btn-back').style.display = 'none';
+      document.getElementById('search').style.display = '';
+      document.querySelector('.domain-list').style.opacity = '';
+      document.querySelector('.domain-list').style.pointerEvents = '';
+    }
+    if (first === 'trash') {
+      if (!trashMode) document.getElementById('btn-trash').click();
+    } else if (first === 'd' && parts[1]) {
+      document.getElementById('search').value = '';
+      toggleSearchClear();
+      if (parts[2]) showRcptView(decodeURIComponent(parts[1]), decodeURIComponent(parts[2]));
+      else showDomainView(decodeURIComponent(parts[1]));
+    } else if (first === 's' && parts.length > 1) {
+      var input = document.getElementById('search');
+      input.value = decodeURIComponent(parts.slice(1).join('/'));
+      toggleSearchClear();
+      searchMails();
+    } else {
+      document.getElementById('search').value = '';
+      toggleSearchClear();
+      loadHomeEmails();
+    }
+  } catch (err) {
+    loadHomeEmails();
+  } finally {
+    applyingHash = false;
+  }
+}
+
+window.addEventListener('hashchange', function() {
+  if ((location.hash || '#/') === buildHash()) return;
+  applyHash();
+});
+
+function initRoute() {
+  if (location.hash && location.hash !== '#' && location.hash !== '#/') applyHash();
+  else loadHomeEmails();
+}
+
+function moveSelection(dir) {
+  var cards = document.querySelectorAll('#email-list .email-card');
+  if (!cards.length) return;
+  var idx = -1;
+  for (var i = 0; i < cards.length; i++) {
+    if (cards[i].classList.contains('active')) { idx = i; break; }
+  }
+  var next = idx === -1 ? (dir > 0 ? 0 : cards.length - 1) : idx + dir;
+  if (next < 0 || next >= cards.length) return;
+  cards[next].click();
+  cards[next].scrollIntoView({ block: 'nearest' });
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
+  var target = e.target;
+  var tag = (target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || target.isContentEditable) {
+    if (e.key === 'Escape') target.blur();
+    return;
+  }
+  if (e.key === '/') {
+    e.preventDefault();
+    document.getElementById('search').focus();
+    return;
+  }
+  if (e.key === 'j' || e.key === 'k') {
+    e.preventDefault();
+    moveSelection(e.key === 'j' ? 1 : -1);
+    return;
+  }
+  if (e.key === 'Delete' && state.selectedId && !trashMode) {
+    var card = document.querySelector('.email-card[data-id="' + state.selectedId + '"]');
+    var del = card && card.querySelector('.email-btn-delete');
+    if (del) del.click();
+  }
+});
+
 var lastSeen = null;
 var pollInFlight = false;
 
@@ -851,12 +1025,12 @@ fetch('/api/emails/since?initial=1')
   .then(function(data) {
     var watermark = data.watermark || { seq: 0, id: '' };
     lastSeen = { seq: Number(watermark.seq || 0), id: watermark.id || '' };
-    loadHomeEmails();
+    initRoute();
     startPolling();
   })
   .catch(function() {
     lastSeen = { seq: 0, id: '' };
-    loadHomeEmails();
+    initRoute();
     startPolling();
   });
 `;

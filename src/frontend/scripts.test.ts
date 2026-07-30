@@ -46,7 +46,7 @@ import { drainPollingPages, scripts } from './scripts';
     expect(seen).toEqual([null, 'page-2', 'page-3']);
     expect(scripts).toContain("fetch('/api/emails/since?initial=1')");
     expect(scripts.indexOf("fetch('/api/emails/since?initial=1')"))
-      .toBeLessThan(scripts.indexOf("lastSeen = { seq: Number(watermark.seq || 0), id: watermark.id || '' };\n    loadHomeEmails();"));
+      .toBeLessThan(scripts.indexOf("lastSeen = { seq: Number(watermark.seq || 0), id: watermark.id || '' };\n    initRoute();"));
     expect(scripts).toContain("&seq=' + encodeURIComponent(lastSeen.seq)");
     expect(scripts).not.toContain('&ts=');
   });

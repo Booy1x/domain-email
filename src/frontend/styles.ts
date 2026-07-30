@@ -177,6 +177,24 @@ export const styles = `
     font-family: 'JetBrains Mono', monospace; font-size: 10px;
     color: var(--text-3);
   }
+  .rcpt-copy {
+    width: 20px; height: 20px; border: none; border-radius: 4px;
+    background: transparent; color: var(--text-3); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; padding: 0; opacity: 0; transition: all 0.15s ease;
+  }
+  .rcpt-item:hover .rcpt-copy { opacity: 1; }
+  .rcpt-copy:hover { background: var(--accent-dim); color: var(--accent); }
+  .rcpt-copy.copied { opacity: 1; color: var(--accent); }
+  @media (hover: none) { .rcpt-copy { opacity: 1; } }
+
+  .meta-copy {
+    border: none; border-radius: 4px; background: transparent;
+    color: var(--text-3); cursor: pointer; padding: 2px 4px;
+    display: inline-flex; align-items: center; transition: all 0.15s ease;
+  }
+  .meta-copy:hover { background: var(--accent-dim); color: var(--accent); }
+  .meta-copy.copied { color: var(--accent); }
 
   .domain-empty {
     display: flex; align-items: center; justify-content: center;
