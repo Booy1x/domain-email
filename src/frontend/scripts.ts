@@ -271,6 +271,7 @@ document.getElementById('email-list').addEventListener('click', function(e) {
           if (card) card.remove();
           state.emails = state.emails.filter(function(e) { return e.id !== id; });
           state.totalLoaded = state.emails.length;
+          renderedEmailCount = state.emails.length;
           document.getElementById('email-count').textContent = state.totalLoaded + ' 封';
           if (state.selectedId === id) {
             state.selectedId = null;
@@ -464,7 +465,7 @@ function loadEmails(reset) {
       state.cursor = data.cursor;
       state.hasMore = !!data.cursor;
       state.totalLoaded = state.emails.length;
-      renderEmailList();
+      renderEmailList(reset);
     })
     .catch(function() {
       if (requestSeq !== listRequestSeq) return;
@@ -475,32 +476,42 @@ function loadEmails(reset) {
     });
 }
 
-function renderEmailList() {
+var renderedEmailCount = 0;
+
+function emailCardHtml(e) {
+  var active = state.selectedId === e.id;
+  var unread = !e.is_read ? ' unread' : '';
+  var timeStr = formatTime(e.date);
+  return '<div class="email-card' + unread + (active ? ' active' : '') +
+    '" data-id="' + e.id + '">' +
+    '<div class="email-card-top">' +
+      '<span class="email-from">' + esc(e.mail_from) + '</span>' +
+      '<span class="email-time">' + timeStr + '</span>' +
+    '</div>' +
+    '<div class="email-subject">' + esc(e.subject || '(无主题)') + '</div>' +
+    '<div class="email-recipient">' + esc((e.rcpt_to || '').split('@')[0] || '') + '</div>' +
+    '<div class="email-actions">' +
+      '<button class="email-btn email-btn-read" data-id="' + e.id + '" data-read="' + e.is_read + '" title="' + (e.is_read ? '标记未读' : '标记已读') + '">' +
+        (e.is_read ? '○' : '●') + '</button>' +
+      '<button class="email-btn email-btn-delete" data-id="' + e.id + '" title="删除">✕</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderEmailList(reset) {
   var el = document.getElementById('email-list');
   document.getElementById('email-count').textContent = state.totalLoaded + ' 封';
   if (state.emails.length === 0) {
     el.innerHTML = '';
+    renderedEmailCount = 0;
     return;
   }
-  el.innerHTML = state.emails.map(function(e) {
-    var active = state.selectedId === e.id;
-    var unread = !e.is_read ? ' unread' : '';
-    var timeStr = formatTime(e.date);
-    return '<div class="email-card' + unread + (active ? ' active' : '') +
-      '" data-id="' + e.id + '">' +
-      '<div class="email-card-top">' +
-        '<span class="email-from">' + esc(e.mail_from) + '</span>' +
-        '<span class="email-time">' + timeStr + '</span>' +
-      '</div>' +
-      '<div class="email-subject">' + esc(e.subject || '(无主题)') + '</div>' +
-      '<div class="email-recipient">' + esc((e.rcpt_to || '').split('@')[0] || '') + '</div>' +
-      '<div class="email-actions">' +
-        '<button class="email-btn email-btn-read" data-id="' + e.id + '" data-read="' + e.is_read + '" title="' + (e.is_read ? '标记未读' : '标记已读') + '">' +
-          (e.is_read ? '○' : '●') + '</button>' +
-        '<button class="email-btn email-btn-delete" data-id="' + e.id + '" title="删除">✕</button>' +
-      '</div>' +
-    '</div>';
-  }).join('');
+  if (reset || renderedEmailCount === 0) {
+    el.innerHTML = state.emails.map(emailCardHtml).join('');
+  } else {
+    el.insertAdjacentHTML('beforeend', state.emails.slice(renderedEmailCount).map(emailCardHtml).join(''));
+  }
+  renderedEmailCount = state.emails.length;
 }
 
 function loadEmailDetail(id) {
