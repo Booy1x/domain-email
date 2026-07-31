@@ -58,8 +58,15 @@ describe('HTML email remote-content boundary', () => {
     expect(scripts).toContain("esc(email.body_text)");
   });
 
-  it('drains every activation-sequence polling page instead of truncating at ten messages', async () => {
-    const pages = [
+  it('keeps inbox entry and domain expansion state decoupled from selection', () => {
+    expect(scripts).toContain("getElementById('inbox-entry')");
+    expect(scripts).toContain('function setDomainOpen(domain)');
+    expect(scripts).toContain('function activateSidebar(domain, rcpt)');
+    expect(scripts).toContain('state.openDomain = domain;');
+    expect(scripts).toContain("inboxEntry.classList.toggle('active', !domain)");
+  });
+
+  it('drains every activation-sequence polling page instead of truncating at ten messages', async () => {    const pages = [
       { emails: Array.from({ length: 100 }, (_, i) => i), cursor: 'page-2' },
       { emails: Array.from({ length: 100 }, (_, i) => i + 100), cursor: 'page-3' },
       { emails: Array.from({ length: 37 }, (_, i) => i + 200), cursor: null },

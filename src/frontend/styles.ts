@@ -108,6 +108,24 @@ export const styles = `
 
   .domain-list { flex: 1; overflow-y: auto; list-style: none; padding: 4px 8px; }
 
+  .inbox-entry {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; margin: 4px 8px 2px; cursor: pointer;
+    border-radius: var(--radius); color: var(--text-2);
+    transition: background 0.15s ease, color 0.15s ease;
+    user-select: none;
+  }
+  .inbox-entry svg { color: var(--text-3); flex-shrink: 0; transition: color 0.15s ease; }
+  .inbox-entry:hover { background: var(--bg-hover); }
+  .inbox-entry.active { background: var(--bg-active); color: var(--text-1); font-weight: 500; }
+  .inbox-entry.active svg { color: var(--accent); }
+  .inbox-label { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .rcpt-empty {
+    padding: 6px 12px 6px 36px;
+    font-size: 11px; color: var(--text-3); font-style: italic;
+  }
+
   .domain-tree { margin-bottom: 1px; }
   .domain-tree-header {
     display: flex; align-items: center; gap: 8px;

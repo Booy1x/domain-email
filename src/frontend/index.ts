@@ -11,7 +11,9 @@ export function inboxPage(domains: DomainData[]): string {
   const domainItems = domains.length === 0
     ? `<li class="domain-empty">暂无域名</li>`
     : domains.map(d => {
-        const rcptItems = d.recipients.map(r =>
+        const rcptItems = d.recipients.length === 0
+          ? `<li class="rcpt-empty">该域名暂无收件人</li>`
+          : d.recipients.map(r =>
           `<li class="rcpt-item" data-domain="${escHtml(d.domain)}" data-rcpt="${escHtml(r.rcpt_user)}">
             <span class="rcpt-avatar" style="background:${stringToColor(r.rcpt_user)}">${escHtml(r.rcpt_user.charAt(0).toUpperCase())}</span>
             <span class="rcpt-name">${escHtml(r.rcpt_user)}</span>
@@ -60,6 +62,10 @@ export function inboxPage(domains: DomainData[]): string {
       </div>
     </div>
     <div class="sidebar-label">域名 / 收件人</div>
+    <div class="inbox-entry" id="inbox-entry" role="button" tabindex="0" title="全部邮件">
+      <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 19v-8.93a2 2 0 01.89-1.664l7-4.666a2 2 0 012.22 0l7 4.666A2 2 0 0121 10.07V19M3 19a2 2 0 002 2h14a2 2 0 002-2M3 19l6.75-4.5M21 19l-6.75-4.5M3 10l6.75 4.5M21 10l-6.75 4.5m0 0l-1.14.76a2 2 0 01-2.22 0l-1.14-.76"/></svg>
+      <span class="inbox-label">收件箱</span>
+    </div>
     <ul class="domain-list">${domainItems}</ul>
     <div class="sidebar-footer">
       <span class="domain-total" id="total-count">0 个域名</span>

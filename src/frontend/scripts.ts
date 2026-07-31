@@ -108,7 +108,7 @@ ${buildEmailSrcdoc.toString()}
 ${emailCardHtml.toString()}
 var state = {
   domain: '', rcptUser: '', emails: [], cursor: null, loading: false, hasMore: true,
-  selectedId: null, totalLoaded: 0, view: 'home',
+  selectedId: null, totalLoaded: 0, view: 'home', openDomain: null,
   trashMode: false,
   previousInbox: null,
   trash: { emails: [], cursor: null, loading: false, hasMore: true }
@@ -154,6 +154,9 @@ function searchMails() {
     state.view = 'search';
     document.querySelectorAll('.rcpt-item').forEach(function(el) { el.classList.remove('active'); });
     document.querySelectorAll('.domain-tree').forEach(function(el) { el.classList.remove('active'); });
+    var inboxEntry = document.getElementById('inbox-entry');
+    if (inboxEntry) inboxEntry.classList.remove('active');
+    setDomainOpen(null);
     updateBreadcrumb();
     loadEmails(true);
   } else if (state.domain) {
@@ -250,6 +253,17 @@ function updateEmailReadState(id, isRead) {
   }
 }
 
+var inboxEntry = document.getElementById('inbox-entry');
+if (inboxEntry) {
+  inboxEntry.addEventListener('click', function() { loadHomeEmails(); });
+  inboxEntry.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      loadHomeEmails();
+    }
+  });
+}
+
 document.querySelector('.domain-list').addEventListener('click', function(e) {
   var copyBtn = e.target.closest('.rcpt-copy');
   if (copyBtn) {
@@ -266,21 +280,36 @@ document.querySelector('.domain-list').addEventListener('click', function(e) {
   var domainHeader = e.target.closest('.domain-tree-header');
   if (domainHeader) {
     var tree = domainHeader.closest('.domain-tree');
-    var isOpen = tree.classList.contains('open');
-    document.querySelectorAll('.domain-tree').forEach(function(el) { el.classList.remove('open'); });
-    if (!isOpen) tree.classList.add('open');
-    showDomainView(tree.dataset.domain);
+    var domain = tree.dataset.domain;
+    var wasOpen = tree.classList.contains('open');
+    showDomainView(domain);
+    if (wasOpen) {
+      setDomainOpen(state.openDomain === domain ? null : domain);
+    }
     return;
   }
 });
 
-function activateSidebar(domain, rcpt, openTree) {
+function setDomainOpen(domain) {
+  state.openDomain = domain;
+  document.querySelectorAll('.domain-tree').forEach(function(tree) {
+    tree.classList.toggle('open', tree.dataset.domain === domain);
+  });
+}
+
+function activateSidebar(domain, rcpt) {
   document.querySelectorAll('.rcpt-item').forEach(function(el) { el.classList.remove('active'); });
   document.querySelectorAll('.domain-tree').forEach(function(el) { el.classList.remove('active'); });
+  var inboxEntry = document.getElementById('inbox-entry');
+  if (inboxEntry) inboxEntry.classList.toggle('active', !domain);
+  if (!domain) {
+    setDomainOpen(null);
+    return;
+  }
+  setDomainOpen(domain);
   document.querySelectorAll('.domain-tree').forEach(function(tree) {
     if (tree.dataset.domain !== domain) return;
     tree.classList.add('active');
-    if (openTree) tree.classList.add('open');
     if (rcpt) {
       tree.querySelectorAll('.rcpt-item').forEach(function(item) {
         if (item.dataset.rcpt === rcpt) item.classList.add('active');
@@ -295,7 +324,7 @@ function resetListAndPreview() {
 }
 
 function showDomainView(domain) {
-  activateSidebar(domain, '', false);
+  activateSidebar(domain, '');
   state.domain = domain;
   state.rcptUser = '';
   state.selectedId = null;
@@ -308,7 +337,7 @@ function showDomainView(domain) {
 }
 
 function showRcptView(domain, rcpt) {
-  activateSidebar(domain, rcpt, true);
+  activateSidebar(domain, rcpt);
   state.domain = domain;
   state.rcptUser = rcpt;
   state.selectedId = null;
@@ -356,7 +385,7 @@ function loadHomeEmails() {
   state.selectedId = null;
   state.totalLoaded = 0;
   state.view = 'home';
-  activateSidebar('', '', false);
+  activateSidebar('', '');
   updateBreadcrumb();
   document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
   loadEmails(true);
@@ -511,7 +540,7 @@ document.getElementById('btn-back').addEventListener('click', function() {
   if (state.view === 'home') {
     loadHomeEmails();
   } else {
-    activateSidebar(state.domain, state.rcptUser, state.view === 'rcpt');
+    activateSidebar(state.domain, state.rcptUser);
     loadEmails(true);
     syncHash();
   }
