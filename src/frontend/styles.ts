@@ -293,6 +293,7 @@ export const styles = `
 
   .email-actions { display: none; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); gap: 4px; }
   .email-card:hover .email-actions { display: flex; }
+  @media (hover: none) { .email-actions { display: flex; } }
   .email-btn {
     width: 24px; height: 24px; border-radius: 4px; border: none; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
@@ -494,7 +495,18 @@ export const styles = `
   /* ── Breadcrumb ── */
   .breadcrumb-bar {
     display: none; align-items: center; gap: 6px;
+    padding: 8px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-surface);
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .breadcrumb-bar .bc-domain { color: var(--text-2); }
+  .breadcrumb-bar .bc-sep { color: var(--text-3); opacity: 0.5; font-size: 10px; }
+  .breadcrumb-bar .bc-rcpt { color: var(--accent-text); font-weight: 500; }
+  .breadcrumb-bar .bc-label { color: var(--text-2); font-style: italic; }
 
+  /* ── Remote content button ── */
   .remote-content-button {
     align-self: flex-start;
     margin: 0 0 12px;
@@ -508,16 +520,6 @@ export const styles = `
   }
   .remote-content-button:hover { background: var(--accent-dim); }
   .remote-content-button:disabled { cursor: wait; opacity: 0.65; }
-    padding: 8px 24px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-surface);
-    font-size: 12px;
-    flex-shrink: 0;
-  }
-  .breadcrumb-bar .bc-domain { color: var(--text-2); }
-  .breadcrumb-bar .bc-sep { color: var(--text-3); opacity: 0.5; font-size: 10px; }
-  .breadcrumb-bar .bc-rcpt { color: var(--accent-text); font-weight: 500; }
-  .breadcrumb-bar .bc-label { color: var(--text-2); font-style: italic; }
 
   /* ── Loading ── */
   .spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--text-2); border-radius: 50%; animation: spin 0.6s linear infinite; }
@@ -550,6 +552,33 @@ export const styles = `
   @keyframes toastIn { from { opacity: 0; transform: translateX(120%); } to { opacity: 1; transform: translateX(0); } }
   @keyframes toastOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(120%); } }
   @keyframes toastBar { from { width: 100%; } to { width: 0%; } }
+
+  .toast.toast-message { cursor: default; min-width: 0; }
+  .toast.toast-message .toast-subject { white-space: normal; word-break: break-word; }
+
+  /* ── Confirm dialog ── */
+  .confirm-overlay {
+    position: fixed; inset: 0; z-index: 10000;
+    background: rgba(0,0,0,0.4);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .confirm-dialog {
+    background: var(--bg-elevated); border: 1px solid var(--border-strong);
+    border-radius: 12px; padding: 20px 22px; min-width: 280px; max-width: 380px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+    animation: fadeIn 0.18s ease;
+  }
+  .confirm-message { font-size: 14px; color: var(--text-1); line-height: 1.6; margin-bottom: 18px; }
+  .confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
+  .confirm-btn {
+    padding: 7px 16px; border-radius: var(--radius); border: 1px solid var(--border);
+    background: var(--bg-surface); color: var(--text-2); cursor: pointer;
+    font-size: 13px; transition: all 0.15s ease;
+  }
+  .confirm-btn:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+  .confirm-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .confirm-btn.confirm-ok { background: var(--red); border-color: var(--red); color: #fff; }
+  .confirm-btn.confirm-ok:hover { filter: brightness(1.08); }
 
   @media (max-width: 900px) {
     .app { flex-direction: column; }

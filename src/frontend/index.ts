@@ -17,7 +17,7 @@ export function inboxPage(domains: DomainData[]): string {
             <span class="rcpt-name">${escHtml(r.rcpt_user)}</span>
             ${r.unread > 0 ? `<span class="rcpt-unread-badge">${r.unread}</span>` : ''}
             <span class="rcpt-count">${r.total}</span>
-            <button class="rcpt-copy" data-addr="${escHtml(r.rcpt_user)}@${escHtml(d.domain)}" title="复制地址"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            <button class="rcpt-copy" data-addr="${escHtml(r.rcpt_user)}@${escHtml(d.domain)}" title="复制地址" aria-label="复制地址"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
           </li>`
         ).join('');
         return `<li class="domain-tree" data-domain="${escHtml(d.domain)}">
@@ -71,15 +71,15 @@ export function inboxPage(domains: DomainData[]): string {
       <div class="search-wrap">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
         <input id="search" type="text" placeholder="搜索邮件..." class="search-input">
-        <button id="search-clear" class="search-clear" title="清除搜索">
+        <button id="search-clear" class="search-clear" title="清除搜索" aria-label="清除搜索">
           <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
       </div>
       <span class="email-total" id="email-count"></span>
-      <button id="btn-trash" class="btn-icon" title="回收站" style="margin-left:auto;">
+      <button id="btn-trash" class="btn-icon" title="回收站" aria-label="回收站" style="margin-left:auto;">
         <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
       </button>
-      <button id="btn-back" class="btn-icon" title="返回收件箱" style="display:none;">
+      <button id="btn-back" class="btn-icon" title="返回收件箱" aria-label="返回收件箱" style="display:none;">
         <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
       </button>
     </div>
