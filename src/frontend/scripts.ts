@@ -752,25 +752,8 @@ function mountEmailIframe(cardId, srcdoc, rawHtml) {
       }
       return values.length ? Math.ceil(Math.max.apply(Math, values)) : 0;
     };
-    var measureLight = function() {
-      var doc = iframe.contentDocument;
-      if (!doc) return 0;
-      var root = doc.documentElement;
-      var body = doc.body;
-      var values = [];
-      var add = function(v) {
-        if (v && isFinite(v)) values.push(v);
-      };
-      if (root) add(root.scrollHeight);
-      if (body) add(body.scrollHeight);
-      return values.length ? Math.ceil(Math.max.apply(Math, values)) : 0;
-    };
     var resize = function() {
       var h = measureHeight();
-      if (h > 0) iframe.style.height = (h + 2) + 'px';
-    };
-    var resizeLight = function() {
-      var h = measureLight();
       if (h > 0) iframe.style.height = (h + 2) + 'px';
     };
     var reveal = function() {
@@ -782,7 +765,6 @@ function mountEmailIframe(cardId, srcdoc, rawHtml) {
       iframe.classList.add('ready');
       card.classList.add('iframe-ready');
       revealed = true;
-      clearInterval(settleTimer);
     };
     var wired = false;
     var wireDoc = function() {
@@ -791,20 +773,20 @@ function mountEmailIframe(cardId, srcdoc, rawHtml) {
       if (!doc) return;
       wired = true;
       if (typeof ResizeObserver !== 'undefined') {
-        var ro = new ResizeObserver(function() { resizeLight(); });
+        var ro = new ResizeObserver(function() { resize(); reveal(); });
         ro.observe(doc.documentElement);
         if (doc.body) ro.observe(doc.body);
       }
       var imgs = doc.querySelectorAll('img');
       for (var i = 0; i < imgs.length; i++) {
         var img = imgs[i];
-        if (!img.complete) img.addEventListener('load', resizeLight, { once: true });
-        img.addEventListener('error', resizeLight, { once: true });
+        if (!img.complete) img.addEventListener('load', resize, { once: true });
+        img.addEventListener('error', resize, { once: true });
       }
     };
     var settleChecks = 0;
     var settleTimer = setInterval(function() {
-      resizeLight();
+      resize();
       reveal();
       settleChecks++;
       if (settleChecks >= 20) clearInterval(settleTimer);
@@ -838,6 +820,10 @@ function mountEmailIframe(cardId, srcdoc, rawHtml) {
     remoteButton.addEventListener('click', function() {
       remoteButton.disabled = true;
       remoteButton.textContent = '正在加载远程内容…';
+      wired = false;
+      revealed = false;
+      iframe.classList.remove('ready');
+      card.classList.remove('iframe-ready');
       iframe.srcdoc = buildEmailSrcdoc(rawHtml, true);
       setTimeout(function() { if (remoteButton.parentNode) remoteButton.remove(); }, 500);
     });
