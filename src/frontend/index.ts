@@ -7,7 +7,7 @@ interface DomainData {
   recipients: { rcpt_user: string; total: number; unread: number; last_date: string }[];
 }
 
-export function inboxPage(domains: DomainData[]): string {
+export function inboxPage(domains: DomainData[], version?: string): string {
   const domainItems = domains.length === 0
     ? `<li class="domain-empty">暂无域名</li>`
     : domains.map(d => {
@@ -69,6 +69,7 @@ export function inboxPage(domains: DomainData[]): string {
     <ul class="domain-list">${domainItems}</ul>
     <div class="sidebar-footer">
       <span class="domain-total" id="total-count">0 个域名</span>
+      <span class="app-version" title="部署版本">v${escHtml(version || 'dev')}</span>
     </div>
   </aside>
 

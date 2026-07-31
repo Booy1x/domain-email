@@ -328,7 +328,7 @@ app.use('/api/*', async (c, next) => {
 app.get('/', async c => {
   const data = await getDomainsWithRecipients(c.env.INBOX_DB);
   c.header('Cache-Control', 'private, no-store');
-  return c.html(inboxPage(data.domains));
+  return c.html(inboxPage(data.domains, c.env.APP_VERSION));
 });
 
 app.get('/api/emails', async c => {

@@ -11,6 +11,7 @@
     "enabled": true
   },
   "vars": {
+    "APP_VERSION": "dev",
     "MAX_RAW_BYTES": "26214400",
     "MAX_BODY_PART_BYTES": "524288",
     "MAX_BODY_TOTAL_BYTES": "786432",

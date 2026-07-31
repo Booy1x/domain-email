@@ -224,6 +224,11 @@ export const styles = `
     display: flex; align-items: center; justify-content: space-between;
   }
   .domain-total { font-size: 11px; color: var(--text-3); }
+  .app-version {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; color: var(--text-3); opacity: 0.7;
+    white-space: nowrap; user-select: none;
+  }
 
   /* ── Main ── */
   .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }

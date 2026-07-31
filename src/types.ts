@@ -53,6 +53,7 @@ export interface Env {
   INBOX_DB: D1Database;
   INBOX_BUCKET: R2Bucket;
   CORS_ORIGIN?: string;
+  APP_VERSION?: string;
   MAX_EMAILS_PER_HOUR?: string;
   MAX_RAW_BYTES?: string;
   MAX_BODY_PART_BYTES?: string;
