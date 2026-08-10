@@ -13,6 +13,30 @@ export async function drainPollingPages<T>(
   return collected;
 }
 
+/* Browser globals referenced by functions serialized into the page via toString(). */
+declare const document: any;
+declare const window: any;
+declare const localStorage: any;
+
+export function bootTheme(): void {
+  let theme: string | null = null;
+  try { theme = localStorage.getItem('theme'); } catch (e) { /* storage unavailable */ }
+  if (theme !== 'dark' && theme !== 'light') {
+    try {
+      theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    } catch (e) { theme = 'light'; }
+  }
+  try { document.documentElement.setAttribute('data-theme', theme); } catch (e) { /* ignore */ }
+}
+
+export function toggleTheme(): void {
+  try {
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme', next); } catch (e) { /* storage unavailable */ }
+  } catch (e) { /* ignore */ }
+}
+
 export function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
@@ -48,7 +72,7 @@ export function compareActivation(a: { activation_seq?: unknown; seq?: unknown; 
 
 export function buildEmailSrcdoc(rawHtml: string, allowRemote: boolean): string {
   const base = [
-    'html,body{margin:0;padding:0;background:#f5f3f0;color:#2b2a27;overflow:visible;}',
+    'html,body{margin:0;padding:0;background:#ffffff;color:#2b2a27;overflow:visible;}',
     'body{padding:32px 36px;font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue","Noto Sans SC","PingFang SC",sans-serif;word-break:break-word;}',
     'img,video,canvas{max-width:100%;height:auto;}',
     'p{margin:10px 0;}p:first-child{margin-top:0;}p:last-child{margin-bottom:0;}',
@@ -83,7 +107,7 @@ export function emailCardHtml(e: { id: string; is_read: number; mail_from: strin
   const unread = !e.is_read ? ' unread' : '';
   const timeStr = formatTime(e.date);
   return '<div class="email-card' + unread + (active ? ' active' : '') +
-    '" data-id="' + esc(e.id) + '">' +
+    '" data-id="' + esc(e.id) + '" tabindex="0" role="button" aria-label="' + esc(e.subject || '(无主题)') + '">' +
     '<div class="email-card-top">' +
       '<span class="email-from">' + esc(e.mail_from) + '</span>' +
       '<span class="email-time">' + timeStr + '</span>' +
@@ -106,6 +130,7 @@ ${formatTime.toString()}
 ${compareActivation.toString()}
 ${buildEmailSrcdoc.toString()}
 ${emailCardHtml.toString()}
+${toggleTheme.toString()}
 var state = {
   domain: '', rcptUser: '', emails: [], cursor: null, loading: false, hasMore: true,
   selectedId: null, totalLoaded: 0, view: 'home', openDomain: null,
@@ -253,6 +278,9 @@ function updateEmailReadState(id, isRead) {
   }
 }
 
+var btnTheme = document.getElementById('btn-theme');
+if (btnTheme) btnTheme.addEventListener('click', toggleTheme);
+
 var inboxEntry = document.getElementById('inbox-entry');
 if (inboxEntry) {
   inboxEntry.addEventListener('click', function() { loadHomeEmails(); });
@@ -287,6 +315,15 @@ document.querySelector('.domain-list').addEventListener('click', function(e) {
       setDomainOpen(state.openDomain === domain ? null : domain);
     }
     return;
+  }
+});
+
+document.querySelector('.domain-list').addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  var item = e.target;
+  if (item.classList && (item.classList.contains('rcpt-item') || item.classList.contains('domain-tree-header'))) {
+    e.preventDefault();
+    item.click();
   }
 });
 
@@ -481,6 +518,15 @@ document.getElementById('email-list').addEventListener('click', function(e) {
   loadEmailDetail(item.dataset.id);
 });
 
+document.getElementById('email-list').addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  var card = e.target;
+  if (card.classList && card.classList.contains('email-card')) {
+    e.preventDefault();
+    card.click();
+  }
+});
+
 document.getElementById('email-list').addEventListener('scroll', function(e) {
   var el = e.target;
   if (state.view === 'trash') {
@@ -586,7 +632,7 @@ function renderTrashList() {
   }
   document.getElementById('email-list').innerHTML = state.trash.emails.map(function(e) {
     var timeStr = formatTime(e.date);
-    return '<div class="email-card" data-id="' + esc(e.id) + '">' +
+    return '<div class="email-card" data-id="' + esc(e.id) + '" tabindex="0" role="button" aria-label="' + esc(e.subject || '(无主题)') + '">' +
       '<div class="email-card-top">' +
         '<span class="email-from">' + esc(e.mail_from) + '</span>' +
         '<span class="email-time">' + timeStr + '</span>' +

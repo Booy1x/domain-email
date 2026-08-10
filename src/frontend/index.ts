@@ -1,5 +1,5 @@
 import { styles } from './styles';
-import { scripts } from './scripts';
+import { bootTheme, scripts } from './scripts';
 
 interface DomainData {
   domain: string;
@@ -14,7 +14,7 @@ export function inboxPage(domains: DomainData[], version?: string): string {
         const rcptItems = d.recipients.length === 0
           ? `<li class="rcpt-empty">该域名暂无收件人</li>`
           : d.recipients.map(r =>
-          `<li class="rcpt-item" data-domain="${escHtml(d.domain)}" data-rcpt="${escHtml(r.rcpt_user)}">
+          `<li class="rcpt-item" data-domain="${escHtml(d.domain)}" data-rcpt="${escHtml(r.rcpt_user)}" tabindex="0" role="button">
             <span class="rcpt-avatar" style="background:${stringToColor(r.rcpt_user)}">${escHtml(r.rcpt_user.charAt(0).toUpperCase())}</span>
             <span class="rcpt-name">${escHtml(r.rcpt_user)}</span>
             ${r.unread > 0 ? `<span class="rcpt-unread-badge">${r.unread}</span>` : ''}
@@ -23,7 +23,7 @@ export function inboxPage(domains: DomainData[], version?: string): string {
           </li>`
         ).join('');
         return `<li class="domain-tree" data-domain="${escHtml(d.domain)}">
-          <div class="domain-tree-header">
+          <div class="domain-tree-header" tabindex="0" role="button">
             <span class="tree-arrow">▶</span>
             <span class="domain-avatar" style="background:${stringToColor(d.domain)}">${escHtml(d.domain.charAt(0).toUpperCase())}</span>
             <span class="domain-name">${escHtml(d.domain)}</span>
@@ -39,6 +39,10 @@ export function inboxPage(domains: DomainData[], version?: string): string {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Domain Inbox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@400;600&display=swap">
+<script>(${bootTheme.toString()})();<\/script>
 <style>${styles}</style>
 </head>
 <body>
@@ -69,6 +73,10 @@ export function inboxPage(domains: DomainData[], version?: string): string {
     <ul class="domain-list">${domainItems}</ul>
     <div class="sidebar-footer">
       <span class="domain-total" id="total-count">0 个域名</span>
+      <button id="btn-theme" class="theme-toggle" title="切换深色 / 浅色" aria-label="切换深色模式">
+        <svg class="icon-moon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </button>
       <span class="app-version" title="部署版本">v${escHtml(version || 'dev')}</span>
     </div>
   </aside>

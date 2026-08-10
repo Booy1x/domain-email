@@ -18,6 +18,7 @@
 - `scripts.ts` 的纯逻辑(如 `esc`、`buildEmailSrcdoc`)写成模块顶部的导出函数,用 `${fn.toString()}` 注入浏览器脚本(见 `drainPollingPages` 的模式)。不要改回字符串内的大段裸 JS。
 - 改完 `scripts.ts` 后,必须用 `new Function(scripts)` 校验生成的脚本字符串语法合法(测试会兜底一部分,但这是最快验证)。
 - 测试:`src/frontend/scripts.test.ts` 同时做「字符串断言」和「直接调导出函数」;`src/frontend/index.test.ts` 断言 HTML 输出。新增行为要补测试。
+- 主题机制:`<head>` 内联 `bootTheme()` IIFE 在绘制前按 localStorage / 系统偏好设置 `<html data-theme>`(防闪烁,勿删);侧栏 `#btn-theme` 切换并写 localStorage。CSS 只在 `:root[data-theme="dark"]` 覆写变量,**不要**再加 `@media (prefers-color-scheme)` 重复一套暗色变量。邮件 iframe 底色(`buildEmailSrcdoc` 的 `background:#ffffff` 与 `--paper`)故意不随主题变化,保证 HTML 邮件可读性。
 
 ## 安全不变量
 

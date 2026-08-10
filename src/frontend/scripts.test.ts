@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { drainPollingPages, scripts, buildEmailSrcdoc, esc, formatBytes, compareActivation } from './scripts';
+import { drainPollingPages, scripts, buildEmailSrcdoc, emailCardHtml, esc, formatBytes, compareActivation } from './scripts';
 
 describe('HTML email remote-content boundary', () => {
   it('builds the initial iframe with remote sources disabled', () => {
@@ -64,6 +64,34 @@ describe('HTML email remote-content boundary', () => {
     expect(scripts).toContain('function activateSidebar(domain, rcpt)');
     expect(scripts).toContain('state.openDomain = domain;');
     expect(scripts).toContain("inboxEntry.classList.toggle('active', !domain)");
+  });
+
+  it('wires the theme toggle to data-theme and localStorage', () => {
+    expect(scripts).toContain('function toggleTheme()');
+    expect(scripts).toContain("getElementById('btn-theme')");
+    expect(scripts).toContain('data-theme');
+    expect(scripts).toContain('localStorage.setItem');
+  });
+
+  it('renders keyboard-focusable email cards', () => {
+    const html = emailCardHtml(
+      { id: 'x1', is_read: 0, mail_from: 'a@b.c', date: '2026-08-01T00:00:00Z', subject: 'Hi', rcpt_to: 'u@b.c' },
+      null,
+    );
+    expect(html).toContain('tabindex="0"');
+    expect(html).toContain('role="button"');
+    expect(html).toContain('aria-label="Hi"');
+  });
+
+  it('activates cards and sidebar items via Enter/Space without hijacking inner buttons', () => {
+    expect(scripts).toContain("classList.contains('email-card')");
+    expect(scripts).toContain("classList.contains('rcpt-item')");
+    expect(scripts).toContain("classList.contains('domain-tree-header')");
+  });
+
+  it('keeps the email paper background white regardless of the app theme', () => {
+    expect(buildEmailSrcdoc('<p>hi</p>', false)).toContain('background:#ffffff');
+    expect(buildEmailSrcdoc('<p>hi</p>', true)).toContain('background:#ffffff');
   });
 
   it('drains every activation-sequence polling page instead of truncating at ten messages', async () => {    const pages = [
