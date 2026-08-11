@@ -429,3 +429,134 @@ describe('bounded and retryable ingestion', () => {
     expect(maximum).toBeLessThanOrEqual(3);
   });
 });
+
+describe('outbound reply', () => {
+  const withMessageId: EmailRow = {
+    ...email,
+    mail_from: '<sender@example.net>',
+    rcpt_to: 'user@example.com',
+    message_id: 'orig-msg-1',
+  };
+
+  function replyEnv(first: unknown): Env {
+    const env = apiEnv({ first }) as Env;
+    env.EMAIL = { send: vi.fn().mockResolvedValue({ messageId: 'mid-1' }) } as any;
+    return env;
+  }
+
+  it('sends a threaded reply from the address the mail landed on', async () => {
+    const env = replyEnv(withMessageId);
+    const response = await app.fetch(
+      new Request(`https://mail.example/api/emails/${id}/reply`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'ok, noted' }),
+      }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    expect((await response.json() as { ok: boolean; id: string }).ok).toBe(true);
+    expect(env.EMAIL!.send).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'sender@example.net',
+      from: 'user@example.com',
+      subject: 'Re: <subject>',
+      text: 'ok, noted',
+      headers: {
+        'In-Reply-To': '<orig-msg-1>',
+        References: '<orig-msg-1>',
+      },
+    }));
+  });
+
+  it('builds the References chain from the stored original chain', async () => {
+    const env = replyEnv({ ...withMessageId, references_text: '<a> <b>' });
+    const response = await app.fetch(
+      new Request(`https://mail.example/api/emails/${id}/reply`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'x' }),
+      }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    expect(env.EMAIL!.send).toHaveBeenCalledWith(expect.objectContaining({
+      headers: { 'In-Reply-To': '<orig-msg-1>', References: '<a> <b> <orig-msg-1>' },
+    }));
+  });
+
+  it('rejects replies without text', async () => {
+    const env = replyEnv(withMessageId);
+    const response = await app.fetch(
+      new Request(`https://mail.example/api/emails/${id}/reply`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subject: 'Re: x' }),
+      }),
+      env,
+    );
+    expect(response.status).toBe(400);
+    expect(env.EMAIL!.send).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the original email does not exist', async () => {
+    const env = replyEnv(null);
+    const response = await app.fetch(
+      new Request(`https://mail.example/api/emails/${id}/reply`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'x' }),
+      }),
+      env,
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it('refuses to reply to a sent email', async () => {
+    const env = replyEnv({ ...withMessageId, direction: 'out' });
+    const response = await app.fetch(
+      new Request(`https://mail.example/api/emails/${id}/reply`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'x' }),
+      }),
+      env,
+    );
+    expect(response.status).toBe(400);
+    expect(env.EMAIL!.send).not.toHaveBeenCalled();
+  });
+
+  it('maps send limit errors to user-readable 429 responses', async () => {
+    const env = apiEnv({ first: withMessageId }) as Env;
+    env.EMAIL = { send: vi.fn().mockRejectedValue({ code: 'E_DAILY_LIMIT_EXCEEDED' }) } as any;
+    const response = await app.fetch(
+      new Request(`https://mail.example/api/emails/${id}/reply`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'x' }),
+      }),
+      env,
+    );
+    expect(response.status).toBe(429);
+    expect((await response.json() as { error: string }).error).toContain('今日发送额度已用完');
+  });
+
+  it('enforces the hourly send cap before calling the binding', async () => {
+    const statement: any = { bind: vi.fn().mockReturnThis(), run: vi.fn().mockResolvedValue({ success: true }), first: vi.fn(), all: vi.fn().mockResolvedValue({ results: [] }) };
+    const prepare = vi.fn((sql: string) => { statement._sql = sql; return statement; });
+    statement.first.mockImplementation(async () => statement._sql.includes('COUNT(*)') ? { cnt: 99 } : withMessageId);
+    const env = apiEnv() as Env;
+    env.INBOX_DB = { prepare, batch: vi.fn().mockResolvedValue([]) } as any;
+    env.EMAIL = { send: vi.fn() } as any;
+    env.SEND_MAX_PER_HOUR = '5';
+    const response = await app.fetch(
+      new Request(`https://mail.example/api/emails/${id}/reply`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'x' }),
+      }),
+      env,
+    );
+    expect(response.status).toBe(429);
+    expect((await response.json() as { error: string }).error).toContain('发送频率超限');
+    expect(env.EMAIL!.send).not.toHaveBeenCalled();
+  });
+
+  it('lists sent emails via the dedicated endpoint', async () => {
+    const row = {
+      id: 'sent-1', domain: 'example.com', mail_from: 'user@example.com', rcpt_to: 'other@example.net',
+      subject: 'Re: hi', date: '2026-01-02T00:00:00.000Z', is_read: 1, is_flagged: 0,
+      created_at: '2026-01-02T00:00:00.000Z', activation_seq: null,
+    };
+    const response = await app.fetch(new Request('https://mail.example/api/emails/sent'), apiEnv({ all: [row] }));
+    expect(response.status).toBe(200);
+    const data = await response.json() as { emails: Array<Record<string, unknown>> };
+    expect(data.emails).toHaveLength(1);
+    expect(data.emails[0].id).toBe('sent-1');
+  });
+});

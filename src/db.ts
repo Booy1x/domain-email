@@ -4,7 +4,8 @@ const EMAIL_FIELDS = `
   id, domain, mail_from, rcpt_to, subject, body_text, body_html, date, r2_key,
   is_read, is_flagged, is_spam, created_at, deleted_at, ingest_key,
   storage_state, raw_size, body_text_size, body_html_size,
-  attachment_count, attachment_total_size, activation_seq, storage_generation
+  attachment_count, attachment_total_size, activation_seq, storage_generation,
+  direction, message_id, in_reply_to, references_text
 `;
 
 interface KeysetCursor {
@@ -47,16 +48,16 @@ export function insertEmail(db: D1Database, email: EmailRow): Promise<D1Result> 
   return db.prepare(
     `INSERT INTO emails (
       id, domain, mail_from, rcpt_to, subject, body_text, body_html, date, r2_key,
-      is_read, is_flagged, is_spam, created_at, ingest_key, storage_state,
+      is_read, is_flagged, is_spam, created_at, message_id, ingest_key, storage_state,
       raw_size, body_text_size, body_html_size, attachment_count, attachment_total_size,
       activation_seq, storage_generation
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     email.id, email.domain, email.mail_from, email.rcpt_to, email.subject,
     email.body_text, email.body_html, email.date, email.r2_key,
     email.is_read, email.is_flagged, email.is_spam, email.created_at,
-    email.ingest_key ?? null, email.storage_state ?? 'active', email.raw_size ?? 0,
-    email.body_text_size ?? 0, email.body_html_size ?? 0,
+    email.message_id ?? null, email.ingest_key ?? null, email.storage_state ?? 'active',
+    email.raw_size ?? 0, email.body_text_size ?? 0, email.body_html_size ?? 0,
     email.attachment_count ?? 0, email.attachment_total_size ?? 0,
     email.activation_seq ?? null, email.storage_generation ?? 1,
   ).run();
@@ -106,24 +107,25 @@ export async function stageIngestion(db: D1Database, email: EmailRow, attachment
   const statements: D1PreparedStatement[] = [
     db.prepare(`INSERT INTO emails (
       id, domain, mail_from, rcpt_to, subject, body_text, body_html, date, r2_key,
-      is_read, is_flagged, is_spam, created_at, ingest_key, storage_state,
+      is_read, is_flagged, is_spam, created_at, message_id, ingest_key, storage_state,
       raw_size, body_text_size, body_html_size, attachment_count, attachment_total_size,
       activation_seq, storage_generation
-    ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, 'pending', ?, ?, ?, ?, ?, NULL, ?
+    ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, NULL, ?
     WHERE EXISTS (SELECT 1 FROM ingestion_registry
       WHERE ingest_key = ? AND state = 'pending' AND storage_generation = ?)
     ON CONFLICT(id) DO UPDATE SET
       domain = excluded.domain, mail_from = excluded.mail_from, rcpt_to = excluded.rcpt_to,
       subject = excluded.subject, body_text = excluded.body_text, body_html = excluded.body_html,
       date = excluded.date, r2_key = excluded.r2_key, created_at = excluded.created_at,
-      ingest_key = excluded.ingest_key, storage_state = 'pending', activation_seq = NULL,
+      message_id = excluded.message_id, ingest_key = excluded.ingest_key,
+      storage_state = 'pending', activation_seq = NULL,
       storage_generation = excluded.storage_generation, raw_size = excluded.raw_size,
       body_text_size = excluded.body_text_size, body_html_size = excluded.body_html_size,
       attachment_count = excluded.attachment_count, attachment_total_size = excluded.attachment_total_size
     WHERE emails.storage_state <> 'active' OR emails.storage_generation <> excluded.storage_generation`).bind(
       email.id, email.domain, email.mail_from, email.rcpt_to, email.subject,
       email.body_text, email.body_html, email.date, email.r2_key, email.created_at,
-      ingestKey, email.raw_size ?? 0, email.body_text_size ?? 0,
+      email.message_id ?? null, ingestKey, email.raw_size ?? 0, email.body_text_size ?? 0,
       email.body_html_size ?? 0, email.attachment_count ?? attachments.length,
       email.attachment_total_size ?? 0, generation, ingestKey, generation,
     ),
@@ -204,7 +206,7 @@ export async function searchEmails(db: D1Database, opts: ListEmailsOptions): Pro
   const params: unknown[] = [];
   const ftsQuery = (opts.q || '').trim().split(/\s+/).filter(Boolean)
     .map(term => `"${term.replace(/"/g, '""')}"*`).join(' AND ');
-  const conditions = [`emails_fts MATCH ?`, `e.deleted_at IS NULL`, `e.storage_state = 'active'`];
+  const conditions = [`emails_fts MATCH ?`, `e.deleted_at IS NULL`, `e.storage_state = 'active'`, `e.direction = 'in'`];
   params.push(ftsQuery);
 
   if (opts.domain) { conditions.push('e.domain = ?'); params.push(opts.domain); }
@@ -229,13 +231,49 @@ export async function searchEmails(db: D1Database, opts: ListEmailsOptions): Pro
 
 export async function listEmails(db: D1Database, opts: ListEmailsOptions): Promise<PageResult> {
   if (opts.q?.trim()) return searchEmails(db, opts);
-  const conditions = [`deleted_at IS NULL`, `storage_state = 'active'`];
+  const conditions = [`deleted_at IS NULL`, `storage_state = 'active'`, `direction = 'in'`];
   const params: unknown[] = [];
   if (opts.domain) { conditions.push('domain = ?'); params.push(opts.domain); }
   if (opts.rcptUser) {
     conditions.push("SUBSTR(rcpt_to, 1, INSTR(rcpt_to, '@') - 1) = ?");
     params.push(opts.rcptUser);
   }
+  if (opts.cursor) {
+    const cursor = decodeCursor(opts.cursor, 'date');
+    conditions.push('(date < ? OR (date = ? AND id < ?))');
+    params.push(cursor.v, cursor.v, cursor.i);
+  }
+  params.push(opts.limit + 1);
+  const result = await db.prepare(`SELECT id, domain, mail_from, rcpt_to, subject, date,
+    is_read, is_flagged, created_at, activation_seq FROM emails WHERE ${conditions.join(' AND ')}
+    ORDER BY date DESC, id DESC LIMIT ?`).bind(...params).all<EmailListRow>();
+  return page(result.results || [], opts.limit, 'date');
+}
+
+export function insertSentEmail(db: D1Database, email: EmailRow): Promise<D1Result> {
+  return db.prepare(`INSERT INTO emails (
+    id, domain, mail_from, rcpt_to, subject, body_text, body_html, date, r2_key,
+    is_read, is_flagged, is_spam, created_at, message_id, ingest_key, storage_state,
+    raw_size, body_text_size, body_html_size, attachment_count, attachment_total_size,
+    activation_seq, storage_generation, direction, in_reply_to, references_text
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+    email.id, email.domain, email.mail_from, email.rcpt_to, email.subject,
+    email.body_text, email.body_html, email.date, email.r2_key,
+    email.is_read, email.is_flagged, email.is_spam, email.created_at,
+    email.message_id ?? null, email.ingest_key ?? null, email.storage_state ?? 'active',
+    email.raw_size ?? 0, email.body_text_size ?? 0, email.body_html_size ?? 0,
+    email.attachment_count ?? 0, email.attachment_total_size ?? 0,
+    email.activation_seq ?? null, email.storage_generation ?? 1,
+    'out', email.in_reply_to ?? null, email.references_text ?? null,
+  ).run();
+}
+
+export async function listSentEmails(
+  db: D1Database,
+  opts: { cursor?: string; limit: number },
+): Promise<PageResult> {
+  const conditions = [`deleted_at IS NULL`, `storage_state = 'active'`, `direction = 'out'`];
+  const params: unknown[] = [];
   if (opts.cursor) {
     const cursor = decodeCursor(opts.cursor, 'date');
     conditions.push('(date < ? OR (date = ? AND id < ?))');
@@ -448,7 +486,7 @@ export interface DomainWithRecipients { domain: string; count: number; recipient
 
 export async function listRecipientGroups(db: D1Database, domain?: string): Promise<{ recipients: RecipientGroup[] }> {
   const params: unknown[] = [];
-  let filter = `deleted_at IS NULL AND storage_state = 'active'`;
+  let filter = `deleted_at IS NULL AND storage_state = 'active' AND direction = 'in'`;
   if (domain) { filter += ' AND domain = ?'; params.push(domain); }
   const result = await db.prepare(`SELECT SUBSTR(rcpt_to, 1, INSTR(rcpt_to, '@') - 1) AS rcpt_user,
     COUNT(*) AS total, SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) AS unread,
@@ -459,7 +497,7 @@ export async function listRecipientGroups(db: D1Database, domain?: string): Prom
 
 export async function getDomainsWithRecipients(db: D1Database): Promise<{ domains: DomainWithRecipients[] }> {
   const domainsResult = await db.prepare(`SELECT domain, COUNT(*) AS count FROM emails
-    WHERE deleted_at IS NULL AND storage_state = 'active' GROUP BY domain ORDER BY domain`)
+    WHERE deleted_at IS NULL AND storage_state = 'active' AND direction = 'in' GROUP BY domain ORDER BY domain`)
     .all<{ domain: string; count: number }>();
   const domains = domainsResult.results || [];
   if (!domains.length) return { domains: [] };
@@ -467,6 +505,7 @@ export async function getDomainsWithRecipients(db: D1Database): Promise<{ domain
     SUBSTR(rcpt_to, 1, INSTR(rcpt_to, '@') - 1) AS rcpt_user,
     COUNT(*) AS total, SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) AS unread,
     MAX(date) AS last_date FROM emails WHERE deleted_at IS NULL AND storage_state = 'active'
+      AND direction = 'in'
     GROUP BY domain, rcpt_user ORDER BY domain, last_date DESC`).all<{ domain: string } & RecipientGroup>();
   const byDomain = new Map<string, RecipientGroup[]>();
   for (const row of recipientsResult.results || []) {
@@ -478,7 +517,7 @@ export async function getDomainsWithRecipients(db: D1Database): Promise<{ domain
 
 export function getDomains(db: D1Database): Promise<D1Result<{ domain: string; count: number }>> {
   return db.prepare(`SELECT domain, COUNT(*) AS count FROM emails
-    WHERE deleted_at IS NULL AND storage_state = 'active' GROUP BY domain ORDER BY domain`).all();
+    WHERE deleted_at IS NULL AND storage_state = 'active' AND direction = 'in' GROUP BY domain ORDER BY domain`).all();
 }
 
 export async function checkRateLimit(db: D1Database, maxPerHour: number): Promise<boolean> {
@@ -504,7 +543,7 @@ export interface SinceRow {
 
 export async function getActivationWatermark(db: D1Database): Promise<{ seq: number; id: string }> {
   const row = await db.prepare(`SELECT activation_seq AS seq, id FROM emails
-    WHERE deleted_at IS NULL AND storage_state = 'active' AND activation_seq IS NOT NULL
+    WHERE deleted_at IS NULL AND storage_state = 'active' AND direction = 'in' AND activation_seq IS NOT NULL
     ORDER BY activation_seq DESC, id DESC LIMIT 1`).first<{ seq: number; id: string }>();
   return { seq: Number(row?.seq || 0), id: row?.id || '' };
 }
@@ -523,7 +562,7 @@ export async function listEmailsSince(
   if (!Number.isSafeInteger(sequence) || sequence < 0) throw new InvalidCursorError();
   const result = await db.prepare(`SELECT id, mail_from, subject, created_at, activation_seq
     FROM emails
-    WHERE deleted_at IS NULL AND storage_state = 'active' AND activation_seq IS NOT NULL
+    WHERE deleted_at IS NULL AND storage_state = 'active' AND direction = 'in' AND activation_seq IS NOT NULL
       AND (activation_seq > ? OR (activation_seq = ? AND id > ?))
     ORDER BY activation_seq ASC, id ASC LIMIT ?`)
     .bind(sequence, sequence, id, options.limit + 1).all<SinceRow>();

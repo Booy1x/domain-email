@@ -56,11 +56,15 @@ try {
   addMigration('0006_activation_cleanup_coordination.sql');
   apply();
 
+  addMigration('0007_reply_threading.sql');
+  apply();
+
   const columns = query('PRAGMA table_info(emails)');
   const names = new Set(columns.map(column => String(column.name)));
   for (const required of [
     'deleted_at', 'ingest_key', 'storage_state', 'raw_size', 'attachment_count',
     'attachment_total_size', 'activation_seq', 'storage_generation',
+    'direction', 'message_id', 'in_reply_to', 'references_text',
   ]) assert(names.has(required), `missing migrated emails column: ${required}`);
 
   const tables = query("SELECT name FROM sqlite_master WHERE type='table'");
@@ -71,7 +75,19 @@ try {
   for (const required of [
     'idx_emails_active_date_id', 'idx_emails_deleted_cursor',
     'idx_emails_activation_seq', 'idx_ingestion_registry_cleanup',
+    'idx_emails_direction_date',
   ]) assert(indexes.some(index => index.name === required), `missing keyset/coordination index: ${required}`);
+
+  const legacyDir = query("SELECT direction FROM emails WHERE id = 'legacy-active'")[0];
+  assert(legacyDir?.direction === 'in', 'legacy email missing default inbound direction');
+  query(`INSERT INTO emails
+    (id, domain, mail_from, rcpt_to, subject, body_text, body_html, date, r2_key,
+     created_at, direction, message_id, in_reply_to, references_text)
+    VALUES ('sent-1', 'example.com', 'me@example.com', 'them@example.net', 'Re: hi', 'hi', '',
+      '2026-01-01', NULL, '2026-01-01T00:00:00.000Z', 'out', '<m@example.com>', 'orig', '<a>')`);
+  const sentRow = query("SELECT direction, message_id FROM emails WHERE id = 'sent-1'")[0];
+  assert(sentRow?.direction === 'out' && sentRow?.message_id === '<m@example.com>',
+    'sent reply threading metadata not persisted');
 
   const legacy = query(`SELECT e.activation_seq, e.storage_generation, r.state
     FROM emails e JOIN ingestion_registry r ON r.email_id = e.id WHERE e.id = 'legacy-active'`)[0];

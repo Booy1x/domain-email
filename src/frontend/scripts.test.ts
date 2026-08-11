@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { drainPollingPages, scripts, buildEmailSrcdoc, emailCardHtml, esc, formatBytes, compareActivation } from './scripts';
+import { drainPollingPages, scripts, buildEmailSrcdoc, emailCardHtml, esc, formatBytes, compareActivation, getPrefixedSubject, buildQuotedReply } from './scripts';
 
 describe('HTML email remote-content boundary', () => {
   it('builds the initial iframe with remote sources disabled', () => {
@@ -92,6 +92,33 @@ describe('HTML email remote-content boundary', () => {
   it('keeps the email paper background white regardless of the app theme', () => {
     expect(buildEmailSrcdoc('<p>hi</p>', false)).toContain('background:#ffffff');
     expect(buildEmailSrcdoc('<p>hi</p>', true)).toContain('background:#ffffff');
+  });
+
+  it('builds a Re: prefixed subject without doubling', () => {
+    expect(getPrefixedSubject('hello')).toBe('Re: hello');
+    expect(getPrefixedSubject('Re: hi')).toBe('Re: hi');
+    expect(getPrefixedSubject('re: x')).toBe('re: x');
+    expect(getPrefixedSubject('')).toBe('');
+  });
+
+  it('builds a quoted reply block from the stored plain text', () => {
+    const quoted = buildQuotedReply('line1\nline2', 'alice@example.com', '2026-01-01T00:00:00Z');
+    expect(quoted).toContain('> line1');
+    expect(quoted).toContain('> line2');
+    expect(quoted).toContain('alice@example.com 写道');
+    expect(buildQuotedReply('', '', '')).toContain('写道');
+  });
+
+  it('wires the sent view and reply composer', () => {
+    expect(scripts).toContain('/api/emails/sent');
+    expect(scripts).toContain('openSentView');
+    expect(scripts).toContain("'#/sent'");
+    expect(scripts).toContain('reply-composer');
+    expect(scripts).toContain("'/reply'");
+    expect(scripts).toContain('meta-reply');
+    expect(scripts).toContain('getPrefixedSubject');
+    expect(scripts).toContain('buildQuotedReply');
+    expect(scripts).toContain('已发送');
   });
 
   it('drains every activation-sequence polling page instead of truncating at ten messages', async () => {    const pages = [

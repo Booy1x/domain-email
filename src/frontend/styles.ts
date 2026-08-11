@@ -235,6 +235,45 @@ export const styles = `
   .meta-copy:hover { background: var(--accent-dim); color: var(--accent); }
   .meta-copy.copied { color: var(--accent); }
 
+  .meta-reply {
+    border: none; border-radius: 4px; background: transparent;
+    color: var(--text-3); cursor: pointer; padding: 2px 4px;
+    display: inline-flex; align-items: center; transition: all 0.15s ease;
+    margin-left: 2px;
+  }
+  .meta-reply:hover { background: var(--accent-dim); color: var(--accent); }
+
+  /* ── Reply composer ── */
+  .reply-composer {
+    margin: 0 0 18px; padding: 14px 16px;
+    border: 1px solid var(--border-strong); border-radius: 10px;
+    background: var(--bg-surface);
+    display: flex; flex-direction: column; gap: 10px;
+    animation: fadeIn 0.2s cubic-bezier(0.2, 0, 0, 1);
+  }
+  .reply-subject {
+    width: 100%; padding: 8px 10px; box-sizing: border-box;
+    border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg-elevated); color: var(--text-1);
+    font-size: 13px; outline: none; transition: all 0.15s ease;
+  }
+  .reply-subject:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .reply-text {
+    width: 100%; min-height: 150px; padding: 10px; box-sizing: border-box;
+    border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg-elevated); color: var(--text-1);
+    font-size: 13.5px; line-height: 1.7; outline: none; resize: vertical;
+    font-family: 'DM Sans', system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    transition: all 0.15s ease;
+  }
+  .reply-text:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .reply-actions { display: flex; align-items: center; gap: 10px; }
+  .reply-hint {
+    flex: 1; font-size: 11px; color: var(--text-3);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .reply-send:disabled { opacity: 0.65; cursor: wait; }
+
   .domain-empty {
     display: flex; align-items: center; justify-content: center;
     height: 80px; color: var(--text-3); font-size: 13px; font-style: italic;

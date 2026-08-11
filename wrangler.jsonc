@@ -21,8 +21,12 @@
     "MAX_QUERY_LENGTH": "200",
     "MAX_PAGE_SIZE": "100",
     "OBJECT_CONCURRENCY": "4",
-    "CLEANUP_EMAILS_PER_RUN": "1"
+    "CLEANUP_EMAILS_PER_RUN": "1",
+    "SEND_MAX_PER_HOUR": "10"
   },
+  "send_email": [
+    { "name": "EMAIL" }
+  ],
   "d1_databases": [
     {
       "binding": "INBOX_DB",

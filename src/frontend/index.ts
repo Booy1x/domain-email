@@ -70,6 +70,10 @@ export function inboxPage(domains: DomainData[], version?: string): string {
       <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 19v-8.93a2 2 0 01.89-1.664l7-4.666a2 2 0 012.22 0l7 4.666A2 2 0 0121 10.07V19M3 19a2 2 0 002 2h14a2 2 0 002-2M3 19l6.75-4.5M21 19l-6.75-4.5M3 10l6.75 4.5M21 10l-6.75 4.5m0 0l-1.14.76a2 2 0 01-2.22 0l-1.14-.76"/></svg>
       <span class="inbox-label">收件箱</span>
     </div>
+    <div class="inbox-entry" id="btn-sent" role="button" tabindex="0" title="已发送">
+      <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+      <span class="inbox-label">已发送</span>
+    </div>
     <ul class="domain-list">${domainItems}</ul>
     <div class="sidebar-footer">
       <span class="domain-total" id="total-count">0 个域名</span>

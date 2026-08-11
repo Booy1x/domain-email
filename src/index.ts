@@ -8,7 +8,7 @@ import type { AttachmentRow, EmailRow, Env, PublicAttachment } from './types';
 import {
   InvalidCursorError, activateIngestion, checkRateLimit, claimCleanup, cleanupStatus, completeCleanup,
   deleteEmail, failCleanup, getActivationWatermark, getAttachment, getAttachments, getDomainsWithRecipients,
-  getEmail, listDeletedEmails, listEmails, listEmailsSince,
+  getEmail, insertSentEmail, listDeletedEmails, listEmails, listEmailsSince, listSentEmails,
   listObjectReferences, listPendingCleanup, markFlagged, markRead, reserveIngestion, restoreEmail,
   stageIngestion, stagePurgeDeleted,
 } from './db';
@@ -69,6 +69,7 @@ export interface PublicEmailDetail {
   created_at: string;
   attachment_count: number;
   attachment_total_size: number;
+  direction: string;
 }
 
 export function sanitizeEmailRow(email: EmailRow): PublicEmailDetail {
@@ -98,6 +99,7 @@ export function sanitizeEmailRow(email: EmailRow): PublicEmailDetail {
     created_at: email.created_at,
     attachment_count: email.attachment_count || 0,
     attachment_total_size: email.attachment_total_size || 0,
+    direction: email.direction || 'in',
   };
 }
 
@@ -247,6 +249,7 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env): P
     created_at: createdAt,
     ingest_key: ingestKey,
     storage_state: 'pending',
+    message_id: parsed.messageId,
     raw_size: rawBuffer.length,
     body_text_size: bodyTextSize,
     body_html_size: bodyHtmlSize,
@@ -372,6 +375,14 @@ app.get('/api/emails/deleted', async c => {
   assertQueryLength(q, limits.queryLength);
   return c.json(await listDeletedEmails(c.env.INBOX_DB, {
     domain: c.req.query('domain'), q, cursor: c.req.query('cursor'),
+    limit: parsePageLimit(c.req.query('limit'), limits.pageSize),
+  }));
+});
+
+app.get('/api/emails/sent', async c => {
+  const limits = getLimits(c.env);
+  return c.json(await listSentEmails(c.env.INBOX_DB, {
+    cursor: c.req.query('cursor'),
     limit: parsePageLimit(c.req.query('limit'), limits.pageSize),
   }));
 });
@@ -551,6 +562,105 @@ app.post('/api/emails/:id/restore', async c => {
   if (!validOpaqueId(id)) return c.json({ error: 'invalid id' }, 400);
   await restoreEmail(c.env.INBOX_DB, id);
   return c.json({ ok: true });
+});
+
+function cleanAddress(value: string): string {
+  return (value || '').replace(/[<>]/g, '').trim();
+}
+
+app.post('/api/emails/:id/reply', async c => {
+  const id = c.req.param('id');
+  if (!validOpaqueId(id)) return c.json({ error: 'invalid id' }, 400);
+  const body = await c.req.json<{ text?: unknown; subject?: unknown }>();
+  if (typeof body.text !== 'string' || !body.text.trim()) {
+    return c.json({ error: 'reply text is required' }, 400);
+  }
+  const text = body.text.trim();
+  if (byteLength(text) > D1_SAFE_EMAIL_TEXT_BYTES) {
+    return c.json({ error: 'reply text too long' }, 400);
+  }
+  const providedSubject = typeof body.subject === 'string' && body.subject.trim()
+    ? body.subject.trim()
+    : '';
+
+  const email = await getEmail(c.env.INBOX_DB, id);
+  if (!email) return c.json({ error: 'not found' }, 404);
+  if (email.direction === 'out') return c.json({ error: 'cannot reply to a sent email' }, 400);
+  const from = cleanAddress(email.rcpt_to);
+  const to = cleanAddress(email.mail_from);
+  if (!from.includes('@')) return c.json({ error: 'original has no reply-to address' }, 400);
+  if (!to.includes('@')) return c.json({ error: 'original has no sender address' }, 400);
+
+  const maxPerHour = Number.parseInt(c.env.SEND_MAX_PER_HOUR || '0', 10);
+  if (Number.isFinite(maxPerHour) && maxPerHour > 0 && !await checkRateLimit(c.env.INBOX_DB, maxPerHour)) {
+    return c.json({ error: '发送频率超限，请稍后再试', code: 'send_rate_limited' }, 429);
+  }
+  if (!c.env.EMAIL) return c.json({ error: 'sending is not configured', code: 'send_unavailable' }, 501);
+
+  const headers: Record<string, string> = {};
+  if (email.message_id) {
+    const originalId = `<${email.message_id}>`;
+    headers['In-Reply-To'] = originalId;
+    headers.References = email.references_text ? `${email.references_text} ${originalId}` : originalId;
+  }
+  const subject = providedSubject || `Re: ${email.subject || ''}`;
+
+  try {
+    await c.env.EMAIL.send({
+      to,
+      from,
+      subject,
+      text,
+      headers: Object.keys(headers).length ? headers : undefined,
+    });
+  } catch (error) {
+    const code = (error as { code?: string }).code || '';
+    console.error('email_send_failed', { code, email_id: id });
+    if (code === 'E_SENDER_NOT_VERIFIED' || code === 'E_SENDER_DOMAIN_NOT_AVAILABLE') {
+      return c.json({ error: '发信域名未配置或未验证', code }, 400);
+    }
+    if (code === 'E_RATE_LIMIT_EXCEEDED' || code === 'E_DAILY_LIMIT_EXCEEDED') {
+      return c.json({ error: '今日发送额度已用完，请稍后再试', code }, 429);
+    }
+    if (code === 'E_CONTENT_TOO_LARGE' || code === 'E_TOO_MANY_RECIPIENTS' || code === 'E_TOO_MANY_ATTACHMENTS') {
+      return c.json({ error: '邮件内容超出限制', code }, 400);
+    }
+    return c.json({ error: '发送失败，请稍后再试', code: code || 'send_failed' }, 500);
+  }
+
+  const createdAt = new Date().toISOString();
+  const fromDomain = from.includes('@') ? from.slice(from.lastIndexOf('@') + 1) : 'unknown';
+  const sentId = crypto.randomUUID();
+  const sentRow: EmailRow = {
+    id: sentId,
+    domain: fromDomain,
+    mail_from: from,
+    rcpt_to: to,
+    subject,
+    body_text: text,
+    body_html: '',
+    date: createdAt,
+    r2_key: null,
+    is_read: 1,
+    is_flagged: 0,
+    is_spam: 0,
+    created_at: createdAt,
+    ingest_key: null,
+    storage_state: 'active',
+    message_id: `<${crypto.randomUUID()}@${fromDomain}>`,
+    raw_size: byteLength(text),
+    body_text_size: byteLength(text),
+    body_html_size: 0,
+    attachment_count: 0,
+    attachment_total_size: 0,
+    activation_seq: null,
+    storage_generation: 1,
+    direction: 'out',
+    in_reply_to: email.message_id ?? null,
+    references_text: headers.References || null,
+  };
+  await insertSentEmail(c.env.INBOX_DB, sentRow);
+  return c.json({ ok: true, id: sentId });
 });
 
 app.onError((error, c) => {

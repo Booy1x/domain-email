@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   activateIngestion, checkRateLimit, claimCleanup, deleteEmail, encodeCursor, getAttachment,
-  insertAttachment, insertEmail, listDeletedEmails, listEmails, listEmailsSince,
-  reserveIngestion, restoreEmail, searchEmails, stageIngestion, stagePurgeDeleted,
+  insertAttachment, insertEmail, insertSentEmail, listDeletedEmails, listEmails, listEmailsSince,
+  listSentEmails, reserveIngestion, restoreEmail, searchEmails, stageIngestion, stagePurgeDeleted,
 } from './db';
 import type { AttachmentRow, EmailRow } from './types';
 
@@ -48,8 +48,8 @@ describe('ingestion persistence', () => {
     expect((db.prepare as any).mock.calls[0][0]).toContain('attachment_total_size');
     expect(db._statements[0].bind).toHaveBeenCalledWith(
       email.id, email.domain, email.mail_from, email.rcpt_to, email.subject, email.body_text,
-      email.body_html, email.date, email.r2_key, 0, 0, 0, email.created_at, email.ingest_key,
-      'pending', 10, 4, 11, 1, 3, null, 1,
+      email.body_html, email.date, email.r2_key, 0, 0, 0, email.created_at,
+      null, email.ingest_key, 'pending', 10, 4, 11, 1, 3, null, 1,
     );
   });
 
@@ -143,6 +143,41 @@ describe('deterministic keyset pagination', () => {
     const sql = (db.prepare as any).mock.calls[0][0];
     expect(sql).toContain('(activation_seq > ? OR (activation_seq = ? AND id > ?))');
     expect(sql).toContain('ORDER BY activation_seq ASC, id ASC');
+    expect(sql).toContain("direction = 'in'");
+  });
+});
+
+describe('outbound reply persistence', () => {
+  it('excludes sent emails from the inbox listing', async () => {
+    const db = createMockD1({ results: [] });
+    await listEmails(db, { limit: 30 });
+    expect((db.prepare as any).mock.calls[0][0]).toContain("direction = 'in'");
+  });
+
+  it('stores sent replies with explicit outbound direction and threading metadata', async () => {
+    const db = createMockD1();
+    const sent = {
+      ...email, id: 'sent-id', direction: 'out' as const,
+      message_id: '<m@example.com>', in_reply_to: 'orig', references_text: '<a> <b>',
+    };
+    await insertSentEmail(db, sent);
+    const sql = db._statements[0].sql;
+    expect(sql).toContain('direction');
+    expect(sql).toContain('references_text');
+    expect(db._statements[0].bind).toHaveBeenCalledWith(
+      sent.id, sent.domain, sent.mail_from, sent.rcpt_to, sent.subject, sent.body_text,
+      sent.body_html, sent.date, sent.r2_key, 0, 0, 0, sent.created_at,
+      '<m@example.com>', 'ingest', 'pending', 10, 4, 11, 1, 3, null, 1,
+      'out', 'orig', '<a> <b>',
+    );
+  });
+
+  it('lists sent emails with outbound direction filter', async () => {
+    const db = createMockD1({ results: [] });
+    await listSentEmails(db, { limit: 30 });
+    const sql = (db.prepare as any).mock.calls[0][0];
+    expect(sql).toContain("direction = 'out'");
+    expect(sql).toContain('ORDER BY date DESC, id DESC');
   });
 });
 

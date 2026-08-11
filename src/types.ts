@@ -1,6 +1,7 @@
 // Shared Worker, storage, and API types.
 
 export type StorageState = 'pending' | 'active' | 'failed';
+export type EmailDirection = 'in' | 'out';
 
 export interface EmailRow {
   id: string;
@@ -26,6 +27,10 @@ export interface EmailRow {
   attachment_total_size?: number;
   activation_seq?: number | null;
   storage_generation?: number;
+  direction?: EmailDirection;
+  message_id?: string | null;
+  in_reply_to?: string | null;
+  references_text?: string | null;
 }
 
 export type EmailListRow = Pick<EmailRow,
@@ -42,6 +47,25 @@ export interface AttachmentRow {
   storage_state?: StorageState;
   storage_generation?: number;
   created_at?: string;
+}
+
+export interface SendEmailAddress {
+  email: string;
+  name?: string;
+}
+export interface SendEmailBuilder {
+  to: string | SendEmailAddress | Array<string | SendEmailAddress>;
+  from: string | SendEmailAddress;
+  subject: string;
+  text?: string;
+  html?: string;
+  cc?: string | SendEmailAddress | Array<string | SendEmailAddress>;
+  bcc?: string | SendEmailAddress | Array<string | SendEmailAddress>;
+  replyTo?: string | SendEmailAddress;
+  headers?: Record<string, string>;
+}
+export interface SendEmailBinding {
+  send(message: SendEmailBuilder): Promise<{ messageId: string }>;
 }
 
 export type ObjectStatus = 'available' | 'missing' | 'unknown';
@@ -65,4 +89,6 @@ export interface Env {
   MAX_PAGE_SIZE?: string;
   OBJECT_CONCURRENCY?: string;
   CLEANUP_EMAILS_PER_RUN?: string;
+  EMAIL?: SendEmailBinding;
+  SEND_MAX_PER_HOUR?: string;
 }

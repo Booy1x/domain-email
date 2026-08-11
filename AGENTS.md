@@ -26,6 +26,7 @@
 - HTML 邮件先 `sanitizeHtml` 再进无脚本 sandbox iframe;远程图片/字体默认被 CSP 阻止,仅用户点「加载远程图片和字体」后放行(`img-src`/`font-src` 加 `https: http:`,`media-src` 保持 `data:`)。
 - iframe 高度必须用 `measureHeight`(遍历节点取 `getBoundingClientRect().bottom` 最大值)全量测量,邮件正文才显示完整。**不要改成只看 `scrollHeight`**——会低估绝对定位/float/margin 塌陷内容,导致正文截断(已踩过坑)。
 - 写 DOM 一律转义(前端统一用 `esc`/`escHtml`),服务端 JSON 原样返回避免双重转义。
+- 回复发送:`POST /api/emails/:id/reply` 只允许 `direction='in'` 的原信,`from` 强制等于原信 `rcpt_to`(信落进来的自己地址);线程头(`In-Reply-To`/`References`)来自 `emails.message_id` 列,收件 ingest 时必须把 `parsed.messageId` 落库。已发送行 `direction='out'`、`r2_key` 为空、`activation_seq` 为空——**所有收件列表/轮询/域名树查询都必须排除 `direction='out'`**。发信只走 `send_email` binding(名 `EMAIL`),错误码要映射成中文文案,`SEND_MAX_PER_HOUR` 限速复用 `checkRateLimit`。
 
 ## 后端与部署
 
