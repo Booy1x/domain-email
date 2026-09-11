@@ -69,8 +69,24 @@ export function formatBytes(size: number): string {
   return (unit === 0 ? value : value.toFixed(value >= 10 ? 0 : 1)) + ' ' + units[unit];
 }
 
-export function formatTime(dateStr: string): string {
+export function emailTimeValue(email: { date?: string | null; created_at?: string | null }): string | null {
+  const candidates: Array<string | null | undefined> = [email && email.date, email && email.created_at];
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i];
+    if (c === undefined || c === null || c === '') continue;
+    if (!Number.isNaN(new Date(c).getTime())) return c as string;
+  }
+  return null;
+}
+
+export function formatEmailTime(email: { date?: string | null; created_at?: string | null }, invalidFallback: string): string {
+  const value = emailTimeValue(email);
+  return value === null ? invalidFallback : formatTime(value, invalidFallback);
+}
+
+export function formatTime(dateStr: string, invalidFallback?: string): string {
   const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return invalidFallback || '时间未知';
   const now = new Date();
   const diff = now.getTime() - d.getTime();
   if (diff < 60000) return '刚刚';
@@ -119,10 +135,10 @@ export function buildEmailSrcdoc(rawHtml: string, allowRemote: boolean): string 
     + '</head><body>' + rawHtml + '</body></html>';
 }
 
-export function emailCardHtml(e: { id: string; is_read: number; mail_from: string; date: string; subject: string; rcpt_to?: string }, selectedId: string | null): string {
+export function emailCardHtml(e: { id: string; is_read: number; mail_from: string; date?: string | null; created_at?: string | null; subject: string; rcpt_to?: string }, selectedId: string | null): string {
   const active = selectedId === e.id;
   const unread = !e.is_read ? ' unread' : '';
-  const timeStr = formatTime(e.date);
+  const timeStr = formatEmailTime(e, '时间未知');
   return '<div class="email-card' + unread + (active ? ' active' : '') +
     '" data-id="' + esc(e.id) + '" tabindex="0" role="button" aria-label="' + esc(e.subject || '(无主题)') + '">' +
     '<div class="email-card-top">' +
@@ -143,6 +159,8 @@ export const scripts = `
 ${drainPollingPages.toString()}
 ${esc.toString()}
 ${formatBytes.toString()}
+${emailTimeValue.toString()}
+${formatEmailTime.toString()}
 ${formatTime.toString()}
 ${compareActivation.toString()}
 ${buildEmailSrcdoc.toString()}
@@ -679,7 +697,7 @@ function renderTrashList() {
     return;
   }
   document.getElementById('email-list').innerHTML = state.trash.emails.map(function(e) {
-    var timeStr = formatTime(e.date);
+    var timeStr = formatEmailTime(e, '时间未知');
     return '<div class="email-card" data-id="' + esc(e.id) + '" tabindex="0" role="button" aria-label="' + esc(e.subject || '(无主题)') + '">' +
       '<div class="email-card-top">' +
         '<span class="email-from">' + esc(e.mail_from) + '</span>' +
@@ -828,7 +846,7 @@ function loadEmailDetail(id) {
       var body;
       var iframeCardId = null;
       var rawHtmlSrc = hasHtml ? email.body_html : null;
-
+      var emailDate = emailTimeValue(email);
       if (hasHtml) {
         iframeCardId = 'email-card-' + id;
         body = '<div class="email-iframe-card" id="' + iframeCardId + '"></div>';
@@ -849,7 +867,7 @@ function loadEmailDetail(id) {
               '<button class="meta-copy" data-addr="' + esc(email.rcpt_to).replace(/"/g, '&quot;') + '" title="复制地址" aria-label="复制地址"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>' +
               (email.direction !== 'out' ? '<button class="meta-reply" title="回复" aria-label="回复"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>' : '') +
             '</div>' +
-            '<div class="preview-date">' + new Date(email.date).toLocaleString('zh-CN') + '</div>' +
+            '<div class="preview-date">' + (emailDate ? new Date(emailDate).toLocaleString('zh-CN') : '时间未知') + '</div>' +
           '</div>' +
           '<div class="attachment-list" id="attachment-list-' + id + '"></div>' +
           '<div class="preview-body">' + body + '</div>' +
@@ -1255,7 +1273,7 @@ function showToast(email) {
     '<div class="toast-header">' +
       '<span class="toast-dot"></span>' +
       '<span class="toast-from">' + esc(email.mail_from || '未知发件人') + '</span>' +
-      '<span class="toast-time">' + esc(formatTime(email.created_at)) + '</span>' +
+      '<span class="toast-time">' + esc(formatEmailTime(email, '刚刚')) + '</span>' +
     '</div>' +
     '<div class="toast-subject">' + esc(email.subject || '(无主题)') + '</div>' +
     '<div class="toast-bar"></div>';
