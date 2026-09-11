@@ -4,7 +4,7 @@
 
 ## 极简分支工作流
 
-- **master**:唯一长寿命分支,生产部署源。push 到 master 触发 CI 部署到 Cloudflare Workers(见 `.github/workflows/ci-deploy.yml`)。
+- **master**:唯一长寿命分支,CI 测试源。push 到 master 只跑测试(不部署),是「测试通过但未部署」的暂存区。
 - **ai/&lt;task-id&gt;-&lt;slug&gt;**:每个任务一个短命分支,PR 合并后立即删除。
 
 ### 标准流程
@@ -13,8 +13,9 @@
 2. 在分支上提交改动,push 到远端
 3. 在 GitHub 开 PR,自审后合并到 master
 4. GitHub 自动删除分支(需在 Settings → General → Pull Requests 勾选 "Automatically delete head branches")
-5. 合并触发 CI:测试 → D1 migration → `wrangler deploy`
-6. 稳定后发版:`git tag vX.Y.Z && git push origin vX.Y.Z`(改 `package.json` version 不会发版)
+5. 合并触发 CI:只跑测试(不部署)
+6. 验证通过后发版:`git tag vX.Y.Z && git push origin vX.Y.Z`
+7. tag push 触发 CI 部署生产,版本号干净为 `vX.Y.Z`
 
 ### 分支命名
 
@@ -73,6 +74,7 @@
 ## 版本号机制
 
 - 首页侧栏 `.app-version` 显示 `APP_VERSION`(wrangler var,默认 `dev`)
-- 版本号来源是 git tag:CI 在 deploy 时用 `git describe` 从 `vX.Y.Z` 语义化 tag 推导
+- **生产部署只在 `vX.Y.Z` tag push 时触发**。tag push 时 HEAD 正好是 tag,版本号直接取 tag 名,永远干净
+- push master 只跑 CI 测试(不部署),master 是「测试通过但未部署」的暂存区
 - 发版 = 打 `vX.Y.Z` tag 并推送到远端
 - 改 `package.json` 的 `version` 字段不会自动改线上版本,除非配合 tag

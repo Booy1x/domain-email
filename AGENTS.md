@@ -5,11 +5,9 @@
 ## 版本号机制(重要,勿删)
 
 - 首页侧边栏底部(`.app-version`)显示 `APP_VERSION`(wrangler var,默认 `dev`),用途是让用户看到当前部署版本。
-- **版本号来源是 git tag**:`.github/workflows/ci-deploy.yml` 在 deploy 时用 `git describe` 从 `vX.Y.Z` 语义化 tag 推导并注入:
-  - HEAD 正好是 tag → `1.2.3`;
-  - tag 之后有提交 → `1.2.3-N-g{sha}`;
-  - 无 tag → `{package.json version}+{short sha}`。
+- **生产部署只在 `vX.Y.Z` tag push 时触发**(ci-deploy.yml 的 deploy job 条件)。tag push 时 HEAD 正好是 tag,版本号直接取 tag 名,永远干净。
 - **发版 = 打 `vX.Y.Z` tag 并推送到远端**(`git tag v1.1.0 && git push origin v1.1.0`)。改 `package.json` 的 `version` 字段不会自动改线上版本,除非配合 tag。
+- push master 只跑 CI 测试(不部署),master 是「测试通过但未部署」的暂存区。
 - 重构 `src/frontend/index.ts` / `src/frontend/styles.ts` 时,**保留 `.app-version` 标识和 `inboxPage(domains, version)` 签名**,不要把它当无用样式删掉。
 
 ## 前端架构
