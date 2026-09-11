@@ -28,7 +28,7 @@
 
 ## 后端与部署
 
-- 生产部署唯一所有者是 `.github/workflows/ci-deploy.yml`(push 到 `master` 触发)。仓库内 `npm run deploy` 被刻意禁用;`scripts/configure-domains.sh` 默认拒绝。不要新增手工部署入口。
+- 生产部署唯一所有者是 `.github/workflows/ci-deploy.yml`(仅 `vX.Y.Z` tag push 触发,push master 只跑测试)。仓库内 `npm run deploy` 被刻意禁用;`scripts/configure-domains.sh` 默认拒绝。不要新增手工部署入口。
 - D1 migration **只新增、不修改已应用文件**;生产 migration 只能由 CI 执行。
 - 常用验证:`npm run type-check`、`npm test`、`npm run test:migrations`。
 - 注意:本地 Windows 跑 `scripts/operations.test.ts` 会因 `npx` spawn 失败而挂,那是环境问题,CI(Ubuntu)会通过,不代表改动有问题。
