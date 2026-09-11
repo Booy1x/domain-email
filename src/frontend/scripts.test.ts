@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { drainPollingPages, scripts, buildEmailSrcdoc, emailCardHtml, esc, formatBytes, compareActivation, getPrefixedSubject, buildQuotedReply } from './scripts';
+import { drainPollingPages, scripts, buildEmailSrcdoc, emailCardHtml, esc, formatBytes, compareActivation, getPrefixedSubject, buildQuotedReply, formatTime, emailTimeValue, formatEmailTime } from './scripts';
 
 describe('HTML email remote-content boundary', () => {
   it('builds the initial iframe with remote sources disabled', () => {
@@ -81,6 +81,51 @@ describe('HTML email remote-content boundary', () => {
     expect(html).toContain('tabindex="0"');
     expect(html).toContain('role="button"');
     expect(html).toContain('aria-label="Hi"');
+  });
+
+  it('uses either date field for live mail and never renders an invalid date as NaN', () => {
+    expect(scripts).toContain('function emailTimeValue(email)');
+    expect(scripts).toContain('function formatEmailTime(email, invalidFallback)');
+    expect(scripts).toContain('const candidates = [email && email.date, email && email.created_at];');
+    expect(scripts).toContain("formatEmailTime(e, '时间未知')");
+    expect(scripts).toContain("formatEmailTime(email, '刚刚')");
+    expect(scripts).toContain('var emailDate = emailTimeValue(email);');
+    expect(scripts).toContain("(emailDate ? new Date(emailDate).toLocaleString('zh-CN') : '时间未知')");
+    expect(scripts).toContain('return invalidFallback || "时间未知";');
+  });
+
+  it('prefers date, falls back to created_at when date is missing/invalid', () => {
+    const valid = '2026-08-01T00:00:00Z';
+    expect(emailTimeValue({ date: valid, created_at: '2026-07-01T00:00:00Z' })).toBe(valid);
+    expect(emailTimeValue({ date: null, created_at: valid })).toBe(valid);
+    expect(emailTimeValue({ date: '', created_at: valid })).toBe(valid);
+    expect(emailTimeValue({ date: 'not-a-date', created_at: valid })).toBe(valid);
+  });
+
+  it('returns null when both fields are missing or invalid', () => {
+    expect(emailTimeValue({ date: null, created_at: null })).toBeNull();
+    expect(emailTimeValue({ date: '', created_at: '' })).toBeNull();
+    expect(emailTimeValue({ date: 'not-a-date', created_at: 'also-bad' })).toBeNull();
+  });
+
+  it('formatTime returns fallback on invalid input and relative string otherwise', () => {
+    expect(formatTime('not-a-date')).toBe('时间未知');
+    expect(formatTime('not-a-date', '时间未知')).toBe('时间未知');
+    expect(formatTime('', 'custom-fallback')).toBe('custom-fallback');
+    expect(formatTime(new Date(Date.now()).toISOString())).toBe('刚刚');
+  });
+
+  it('formatEmailTime uses fallback when no valid candidate exists', () => {
+    expect(formatEmailTime({ date: null, created_at: null }, '时间未知')).toBe('时间未知');
+    expect(formatEmailTime({ date: 'bad', created_at: 'also-bad' }, '刚刚')).toBe('刚刚');
+  });
+
+  it('emailCardHtml renders 时间未知 when both date fields are missing', () => {
+    const html = emailCardHtml(
+      { id: 'x2', is_read: 0, mail_from: 'a@b.c', date: null, created_at: null, subject: 'Hi' },
+      null,
+    );
+    expect(html).toContain('时间未知');
   });
 
   it('activates cards and sidebar items via Enter/Space without hijacking inner buttons', () => {
