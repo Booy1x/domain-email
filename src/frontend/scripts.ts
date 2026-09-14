@@ -320,6 +320,32 @@ function updateEmailReadState(id, isRead) {
 var btnTheme = document.getElementById('btn-theme');
 if (btnTheme) btnTheme.addEventListener('click', toggleTheme);
 
+function setMobileNav(active) {
+  document.querySelectorAll('.mobile-nav-item').forEach(function(el) {
+    el.classList.toggle('active', el.id === 'mobile-' + active);
+  });
+}
+function closeDomainDrawer() {
+  document.querySelector('.app').classList.remove('drawer-open');
+}
+var btnSidebar = document.getElementById('btn-sidebar');
+var drawerBackdrop = document.getElementById('drawer-backdrop');
+if (btnSidebar) btnSidebar.addEventListener('click', function() { document.querySelector('.app').classList.add('drawer-open'); });
+if (drawerBackdrop) drawerBackdrop.addEventListener('click', closeDomainDrawer);
+var mobileBack = document.getElementById('btn-mobile-back');
+if (mobileBack) mobileBack.addEventListener('click', function() {
+  document.body.classList.remove('email-open');
+  state.selectedId = null;
+  detailRequestSeq++;
+  document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
+});
+var mobileInbox = document.getElementById('mobile-inbox');
+var mobileSent = document.getElementById('mobile-sent');
+var mobileTrash = document.getElementById('mobile-trash');
+if (mobileInbox) mobileInbox.addEventListener('click', function() { closeDomainDrawer(); loadHomeEmails(); });
+if (mobileSent) mobileSent.addEventListener('click', function() { closeDomainDrawer(); openSentView(); });
+if (mobileTrash) mobileTrash.addEventListener('click', function() { closeDomainDrawer(); document.getElementById('btn-trash').click(); });
+
 var lastEmail = null;
 
 var btnSent = document.getElementById('btn-sent');
@@ -417,6 +443,7 @@ function resetListAndPreview() {
 }
 
 function showDomainView(domain) {
+  closeDomainDrawer();
   activateSidebar(domain, '');
   state.domain = domain;
   state.rcptUser = '';
@@ -430,6 +457,7 @@ function showDomainView(domain) {
 }
 
 function showRcptView(domain, rcpt) {
+  closeDomainDrawer();
   activateSidebar(domain, rcpt);
   state.domain = domain;
   state.rcptUser = rcpt;
@@ -480,6 +508,8 @@ function loadHomeEmails() {
   state.selectedId = null;
   state.totalLoaded = 0;
   state.view = 'home';
+  document.body.classList.remove('email-open');
+  setMobileNav('inbox');
   activateSidebar('', '');
   updateBreadcrumb();
   document.getElementById('email-list').innerHTML = '<div class="loading-wrap"><div class="spinner"></div></div>';
@@ -567,6 +597,8 @@ document.getElementById('email-list').addEventListener('click', function(e) {
     return;
   }
   state.selectedId = item.dataset.id;
+  document.body.classList.add('email-open');
+  closeDomainDrawer();
   document.querySelectorAll('.email-card').forEach(function(el) { el.classList.remove('active'); });
   item.classList.add('active');
   item.classList.remove('unread');
@@ -609,6 +641,8 @@ document.getElementById('btn-trash').addEventListener('click', function() {
   state.view = 'trash';
   state.loading = false;
   state.selectedId = null;
+  document.body.classList.remove('email-open');
+  setMobileNav('trash');
   listRequestSeq++;
   detailRequestSeq++;
   document.getElementById('btn-trash').style.display = 'none';
@@ -626,6 +660,7 @@ document.getElementById('btn-back').addEventListener('click', function() {
   var prev = state.previousInbox;
   state.previousInbox = null;
   state.trashMode = false;
+  document.body.classList.remove('email-open');
   state.loading = false;
   listRequestSeq++;
   detailRequestSeq++;
@@ -722,6 +757,8 @@ function openSentView() {
   state.view = 'sent';
   state.loading = false;
   state.selectedId = null;
+  document.body.classList.remove('email-open');
+  setMobileNav('sent');
   listRequestSeq++;
   detailRequestSeq++;
   document.getElementById('btn-trash').style.display = 'none';

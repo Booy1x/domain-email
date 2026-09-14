@@ -87,6 +87,12 @@ export function inboxPage(domains: DomainData[], version?: string): string {
 
   <main class="main">
     <div class="toolbar">
+      <button id="btn-sidebar" class="btn-icon mobile-only" title="域名和收件人" aria-label="打开域名和收件人">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <button id="btn-mobile-back" class="btn-icon mobile-only" title="返回邮件列表" aria-label="返回邮件列表">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M15 18l-6-6 6-6"/></svg>
+      </button>
       <div class="search-wrap">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
         <input id="search" type="text" placeholder="搜索邮件..." class="search-input">
@@ -115,6 +121,22 @@ export function inboxPage(domains: DomainData[], version?: string): string {
     </div>
   </main>
 </div>
+
+<div class="drawer-backdrop" id="drawer-backdrop"></div>
+<nav class="mobile-bottom-nav" aria-label="邮件文件夹">
+  <button class="mobile-nav-item active" id="mobile-inbox" type="button" aria-label="收件箱">
+    <svg width="19" height="19" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 19v-8.93a2 2 0 01.89-1.664l7-4.666a2 2 0 012.22 0l7 4.666A2 2 0 0121 10.07V19M3 19a2 2 0 002 2h14a2 2 0 002-2M3 19l6.75-4.5M21 19l-6.75-4.5m0 0l-1.14.76a2 2 0 01-2.22 0l-1.14-.76"/></svg>
+    <span>收件箱</span>
+  </button>
+  <button class="mobile-nav-item" id="mobile-sent" type="button" aria-label="已发送">
+    <svg width="19" height="19" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+    <span>已发送</span>
+  </button>
+  <button class="mobile-nav-item" id="mobile-trash" type="button" aria-label="回收站">
+    <svg width="19" height="19" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 01-1-1h-4a1 1 0 01-1 1v3M4 7h16"/></svg>
+    <span>回收站</span>
+  </button>
+</nav>
 
 <div class="toast-container" id="toast-container"></div>
 
