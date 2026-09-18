@@ -1,6 +1,6 @@
 {
   "name": "domain-email",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": true,
   "description": "Multi-domain catch-all inbox powered by Cloudflare Workers",
   "scripts": {
