@@ -140,7 +140,7 @@ function validOpaqueId(value: string): boolean {
 export async function handleEmail(message: ForwardableEmailMessage, env: Env): Promise<void> {
   const limits = getLimits(env);
   const maxPerHour = Number.parseInt(env.MAX_EMAILS_PER_HOUR || '0', 10);
-  if (Number.isFinite(maxPerHour) && maxPerHour > 0 && !await checkRateLimit(env.INBOX_DB, maxPerHour)) {
+  if (Number.isFinite(maxPerHour) && maxPerHour > 0 && !await checkRateLimit(env.INBOX_DB, maxPerHour, 'in')) {
     message.setReject('Mailbox rate limit exceeded');
     console.warn('email_rejected_rate_limit');
     return;
@@ -592,7 +592,7 @@ app.post('/api/emails/:id/reply', async c => {
   if (!to.includes('@')) return c.json({ error: 'original has no sender address' }, 400);
 
   const maxPerHour = Number.parseInt(c.env.SEND_MAX_PER_HOUR || '0', 10);
-  if (Number.isFinite(maxPerHour) && maxPerHour > 0 && !await checkRateLimit(c.env.INBOX_DB, maxPerHour)) {
+  if (Number.isFinite(maxPerHour) && maxPerHour > 0 && !await checkRateLimit(c.env.INBOX_DB, maxPerHour, 'out')) {
     return c.json({ error: '发送频率超限，请稍后再试', code: 'send_rate_limited' }, 429);
   }
   if (!c.env.EMAIL) return c.json({ error: 'sending is not configured', code: 'send_unavailable' }, 501);

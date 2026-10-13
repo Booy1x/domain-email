@@ -225,14 +225,25 @@ describe('deletion, restore, and cleanup outbox', () => {
 
 describe('rate limit fail-open behavior', () => {
   it('allows below limit and rejects at limit', async () => {
-    expect(await checkRateLimit(createMockD1({ cnt: 4 }), 5)).toBe(true);
-    expect(await checkRateLimit(createMockD1({ cnt: 5 }), 5)).toBe(false);
+    expect(await checkRateLimit(createMockD1({ cnt: 4 }), 5, 'in')).toBe(true);
+    expect(await checkRateLimit(createMockD1({ cnt: 5 }), 5, 'in')).toBe(false);
+  });
+
+  it('counts only the requested direction within an index-friendly ISO window', async () => {
+    const db = createMockD1({ cnt: 0 });
+    const now = Date.parse('2026-01-01T12:00:00.000Z');
+    await checkRateLimit(db, 5, 'out', now);
+    const sql = (db.prepare as any).mock.calls[0][0] as string;
+    expect(sql).toContain('direction = ?');
+    expect(sql).toContain('created_at > ?');
+    expect(sql).not.toContain('strftime');
+    expect(db._statements[0].bind).toHaveBeenCalledWith('out', '2026-01-01T11:00:00.000Z');
   });
 
   it('allows delivery if the limit query itself fails', async () => {
     const db = createMockD1();
     db._statements.length = 0;
     (db.prepare as any).mockImplementation(() => ({ first: vi.fn().mockRejectedValue(new Error('db unavailable')) }));
-    expect(await checkRateLimit(db, 5)).toBe(true);
+    expect(await checkRateLimit(db, 5, 'in')).toBe(true);
   });
 });
