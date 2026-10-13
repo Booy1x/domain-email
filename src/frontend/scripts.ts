@@ -135,22 +135,35 @@ export function buildEmailSrcdoc(rawHtml: string, allowRemote: boolean): string 
     + '</head><body>' + rawHtml + '</body></html>';
 }
 
+export function avatarHtml(name: string, large?: boolean): string {
+  var text = String(name || '');
+  var initial = (text.replace(/^[^A-Za-z0-9\u4e00-\u9fa5]+/, '').charAt(0) || '?').toUpperCase();
+  var hash = 0;
+  for (var i = 0; i < text.length; i++) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+  return '<span class="email-avatar' + (large ? ' lg' : '') + '" style="background:hsl(' + (hash % 360) + ',46%,46%)" aria-hidden="true">' + esc(initial) + '</span>';
+}
+
 export function emailCardHtml(e: { id: string; is_read: number; mail_from: string; date?: string | null; created_at?: string | null; subject: string; rcpt_to?: string }, selectedId: string | null): string {
   const active = selectedId === e.id;
   const unread = !e.is_read ? ' unread' : '';
   const timeStr = formatEmailTime(e, '时间未知');
   return '<div class="email-card' + unread + (active ? ' active' : '') +
     '" data-id="' + esc(e.id) + '" tabindex="0" role="button" aria-label="' + esc(e.subject || '(无主题)') + '">' +
-    '<div class="email-card-top">' +
-      '<span class="email-from">' + esc(e.mail_from) + '</span>' +
-      '<span class="email-time">' + timeStr + '</span>' +
-    '</div>' +
-    '<div class="email-subject">' + esc(e.subject || '(无主题)') + '</div>' +
-    '<div class="email-recipient">' + esc((e.rcpt_to || '').split('@')[0] || '') + '</div>' +
-    '<div class="email-actions">' +
-      '<button class="email-btn email-btn-read" type="button" aria-label="' + (e.is_read ? '标记未读' : '标记已读') + '" data-id="' + esc(e.id) + '" data-read="' + e.is_read + '" title="' + (e.is_read ? '标记未读' : '标记已读') + '">' +
-        (e.is_read ? '○' : '●') + '</button>' +
-      '<button class="email-btn email-btn-delete" type="button" aria-label="删除" data-id="' + esc(e.id) + '" title="删除">✕</button>' +
+    avatarHtml(e.mail_from) +
+    '<div class="email-main">' +
+      '<div class="email-card-top">' +
+        '<span class="email-from">' + esc(e.mail_from) + '</span>' +
+        '<span class="email-time">' + timeStr + '</span>' +
+      '</div>' +
+      '<div class="email-subject">' + esc(e.subject || '(无主题)') + '</div>' +
+      '<div class="email-meta-row">' +
+        '<span class="email-recipient">' + esc((e.rcpt_to || '').split('@')[0] || '') + '</span>' +
+        '<span class="email-actions">' +
+          '<button class="email-btn email-btn-read" type="button" aria-label="' + (e.is_read ? '标记未读' : '标记已读') + '" data-id="' + esc(e.id) + '" data-read="' + e.is_read + '" title="' + (e.is_read ? '标记未读' : '标记已读') + '">' +
+            (e.is_read ? '○' : '●') + '</button>' +
+          '<button class="email-btn email-btn-delete" type="button" aria-label="删除" data-id="' + esc(e.id) + '" title="删除">✕</button>' +
+        '</span>' +
+      '</div>' +
     '</div>' +
   '</div>';
 }
@@ -164,6 +177,7 @@ ${formatEmailTime.toString()}
 ${formatTime.toString()}
 ${compareActivation.toString()}
 ${buildEmailSrcdoc.toString()}
+${avatarHtml.toString()}
 ${emailCardHtml.toString()}
 ${toggleTheme.toString()}
 ${getPrefixedSubject.toString()}
@@ -542,6 +556,40 @@ function loadHomeEmails() {
   syncHash();
 }
 
+function deleteEmailWithUndo(id) {
+  fetch('/api/emails/' + id, { method: 'DELETE' })
+    .then(function(r) {
+      if (!r.ok) throw new Error('delete failed');
+      var card = document.querySelector('.email-card[data-id="' + id + '"]');
+      if (card) card.remove();
+      state.emails = state.emails.filter(function(e) { return e.id !== id; });
+      state.totalLoaded = state.emails.length;
+      renderedEmailCount = state.emails.length;
+      document.getElementById('email-count').textContent = state.totalLoaded + ' 封';
+      if (state.selectedId === id) {
+        state.selectedId = null;
+        document.body.classList.remove('email-open');
+        document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
+      }
+      refreshDomainCounts();
+      showToastMessage('邮件已删除', { label: '撤销', onClick: function() { undoDelete(id); } }, 6000);
+    })
+    .catch(function() { showToastMessage('删除失败，请重试'); });
+}
+
+function undoDelete(id) {
+  fetch('/api/emails/' + id + '/restore', { method: 'POST' })
+    .then(function(r) {
+      if (!r.ok) throw new Error('restore failed');
+      refreshDomainCounts();
+      if (state.view === 'trash') { loadTrash(true); return; }
+      if (state.view === 'sent') return;
+      state.cursor = null; state.emails = []; state.hasMore = true; state.totalLoaded = 0;
+      loadEmails(true);
+    })
+    .catch(function() { showToastMessage('撤销失败，请到「已删除」中恢复'); });
+}
+
 document.getElementById('email-list').addEventListener('click', function(e) {
   var restoreBtn = e.target.closest('.email-btn-restore');
   if (restoreBtn) {
@@ -560,25 +608,7 @@ document.getElementById('email-list').addEventListener('click', function(e) {
   var delBtn = e.target.closest('.email-btn-delete');
   if (delBtn) {
     e.stopPropagation();
-    var id = delBtn.dataset.id;
-    showConfirm('确定要删除这封邮件吗？', function() {
-      fetch('/api/emails/' + id, { method: 'DELETE' })
-        .then(function(r) {
-          if (!r.ok) throw new Error('delete failed');
-          var card = document.querySelector('.email-card[data-id="' + id + '"]');
-          if (card) card.remove();
-          state.emails = state.emails.filter(function(e) { return e.id !== id; });
-          state.totalLoaded = state.emails.length;
-          renderedEmailCount = state.emails.length;
-          document.getElementById('email-count').textContent = state.totalLoaded + ' 封';
-          if (state.selectedId === id) {
-            state.selectedId = null;
-            document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
-          }
-          refreshDomainCounts();
-        })
-        .catch(function() { showToastMessage('删除失败，请重试'); });
-    });
+    deleteEmailWithUndo(delBtn.dataset.id);
     return;
   }
 
@@ -735,13 +765,19 @@ function renderTrashList() {
   document.getElementById('email-list').innerHTML = state.trash.emails.map(function(e) {
     var timeStr = formatEmailTime(e, '时间未知');
     return '<div class="email-card" data-id="' + esc(e.id) + '" tabindex="0" role="button" aria-label="' + esc(e.subject || '(无主题)') + '">' +
-      '<div class="email-card-top">' +
-        '<span class="email-from">' + esc(e.mail_from) + '</span>' +
-        '<span class="email-time">' + timeStr + '</span>' +
-      '</div>' +
-      '<div class="email-subject">' + esc(e.subject || '(无主题)') + '</div>' +
-      '<div class="email-actions" style="display:flex;">' +
-        '<button class="email-btn email-btn-restore" type="button" aria-label="恢复" data-id="' + esc(e.id) + '" title="恢复">↩</button>' +
+      avatarHtml(e.mail_from) +
+      '<div class="email-main">' +
+        '<div class="email-card-top">' +
+          '<span class="email-from">' + esc(e.mail_from) + '</span>' +
+          '<span class="email-time">' + timeStr + '</span>' +
+        '</div>' +
+        '<div class="email-subject">' + esc(e.subject || '(无主题)') + '</div>' +
+        '<div class="email-meta-row">' +
+          '<span class="email-recipient">' + esc((e.rcpt_to || '').split('@')[0] || '') + '</span>' +
+          '<span class="email-actions always">' +
+            '<button class="email-btn email-btn-restore" type="button" aria-label="恢复" data-id="' + esc(e.id) + '" title="恢复">↩ 恢复</button>' +
+          '</span>' +
+        '</div>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -889,11 +925,18 @@ function loadEmailDetail(id) {
           '<div class="preview-header">' +
             '<h2 class="preview-subject">' + esc(email.subject || '(无主题)') + '</h2>' +
             '<div class="preview-meta">' +
-              '<span class="from">' + esc(email.mail_from) + '</span>' +
-              '<span class="arrow">→</span>' +
-              '<span>' + esc(email.rcpt_to) + '</span>' +
-              '<button class="meta-copy" data-addr="' + esc(email.rcpt_to).replace(/"/g, '&quot;') + '" title="复制地址" aria-label="复制地址"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>' +
-              (email.direction !== 'out' ? '<button class="meta-reply" title="回复" aria-label="回复"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>' : '') +
+              avatarHtml(email.mail_from, true) +
+              '<div class="preview-people">' +
+                '<span class="from">' + esc(email.mail_from) + '</span>' +
+                '<span class="preview-to"><span class="preview-to-text">发至 ' + esc(email.rcpt_to) + '</span>' +
+                  '<button class="meta-copy" data-addr="' + esc(email.rcpt_to).replace(/"/g, '&quot;') + '" title="复制地址" aria-label="复制地址"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>' +
+                '</span>' +
+              '</div>' +
+              (email.direction !== 'out' ?
+                '<div class="preview-actions">' +
+                  '<button class="meta-reply" type="button" title="回复" aria-label="回复"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg><span>回复</span></button>' +
+                  '<button class="meta-delete" type="button" title="删除" aria-label="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg><span>删除</span></button>' +
+                '</div>' : '') +
             '</div>' +
             '<div class="preview-date">' + (emailDate ? new Date(emailDate).toLocaleString('zh-CN') : '时间未知') + '</div>' +
           '</div>' +
@@ -1111,6 +1154,11 @@ document.getElementById('preview').addEventListener('click', function(e) {
     openReplyComposer();
     return;
   }
+  var deleteBtn = e.target.closest('.meta-delete');
+  if (deleteBtn) {
+    if (lastEmail) deleteEmailWithUndo(lastEmail.id);
+    return;
+  }
   var btn = e.target.closest('.meta-copy');
   if (btn) copyText(btn.dataset.addr || '', btn);
 });
@@ -1128,8 +1176,8 @@ function openReplyComposer() {
     '<textarea class="reply-text" placeholder="回复内容…"></textarea>' +
     '<div class="reply-actions">' +
       '<span class="reply-hint">回复至 ' + esc(lastEmail.mail_from || '') + '</span>' +
-      '<button type="button" class="confirm-btn reply-cancel">取消</button>' +
-      '<button type="button" class="confirm-btn confirm-ok reply-send">发送</button>' +
+      '<button type="button" class="btn reply-cancel">取消</button>' +
+      '<button type="button" class="btn btn-primary reply-send">发送</button>' +
     '</div>';
   var body = document.querySelector('.preview-body');
   if (!body) return;
@@ -1312,55 +1360,24 @@ function dismissToast(el) {
   setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
 }
 
-function showToastMessage(text) {
+function showToastMessage(text, action, duration) {
   var container = document.getElementById('toast-container');
   if (!container) return;
   var el = document.createElement('div');
   el.className = 'toast toast-message';
   el.setAttribute('role', 'status');
-  el.innerHTML = '<div class="toast-subject">' + esc(text) + '</div>';
+  el.innerHTML = '<div class="toast-subject">' + esc(text) + '</div>' +
+    (action ? '<button type="button" class="toast-undo">' + esc(action.label) + '</button>' : '');
   el.addEventListener('click', function() { dismissToast(el); });
+  if (action) {
+    el.querySelector('.toast-undo').addEventListener('click', function(ev) {
+      ev.stopPropagation();
+      dismissToast(el);
+      action.onClick();
+    });
+  }
   container.appendChild(el);
-  setTimeout(function() { dismissToast(el); }, 4000);
-}
-
-function showConfirm(message, onConfirm) {
-  var overlay = document.createElement('div');
-  overlay.className = 'confirm-overlay';
-  var dialog = document.createElement('div');
-  dialog.className = 'confirm-dialog';
-  dialog.setAttribute('role', 'alertdialog');
-  dialog.setAttribute('aria-modal', 'true');
-  dialog.innerHTML =
-    '<div class="confirm-message">' + esc(message) + '</div>' +
-    '<div class="confirm-actions">' +
-      '<button type="button" class="confirm-btn confirm-cancel">取消</button>' +
-      '<button type="button" class="confirm-btn confirm-ok">删除</button>' +
-    '</div>';
-  overlay.appendChild(dialog);
-  document.body.appendChild(overlay);
-  var cancelBtn = dialog.querySelector('.confirm-cancel');
-  var okBtn = dialog.querySelector('.confirm-ok');
-  var close = function() {
-    document.removeEventListener('keydown', onKeydown);
-    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-  };
-  var onKeydown = function(e) {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      close();
-    }
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      close();
-      onConfirm();
-    }
-  };
-  cancelBtn.addEventListener('click', close);
-  okBtn.addEventListener('click', function() { close(); onConfirm(); });
-  overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
-  document.addEventListener('keydown', onKeydown);
-  cancelBtn.focus();
+  setTimeout(function() { dismissToast(el); }, duration || 4000);
 }
 
 function drainSince(url, collected) {
