@@ -186,3 +186,34 @@ describe('HTML email remote-content boundary', () => {
     expect(scripts).not.toContain('&ts=');
   });
 });
+
+describe('sidebar selection', () => {
+  it('clears the inbox highlight when switching to the sent view', () => {
+    const start = scripts.indexOf('function openSentView(');
+    const body = scripts.slice(start, scripts.indexOf('function loadSent(', start));
+    expect(body).toContain("markSpecialView('btn-sent')");
+    const mark = scripts.slice(scripts.indexOf('function markSpecialView('), scripts.indexOf('function leaveSpecialViews('));
+    expect(mark).toContain("inbox.classList.remove('active')");
+    expect(mark).toContain("el.classList.toggle('active', id === activeId)");
+  });
+
+  it('toggles the domain list from the inbox arrow without navigating', () => {
+    expect(scripts).toContain('function setInboxExpanded(expanded)');
+    expect(scripts).toContain("e.target.closest('#inbox-arrow')");
+    expect(scripts).toContain("list.classList.toggle('collapsed', !expanded)");
+    expect(scripts).toContain('setInboxExpanded(true);');
+  });
+
+  it('opens deleted mail from the sidebar for all domains and lets every entry leave it', () => {
+    const start = scripts.indexOf('function openTrashView(');
+    const body = scripts.slice(start, scripts.indexOf('function loadTrash(', start));
+    expect(body).toContain("markSpecialView('btn-trash')");
+    const load = scripts.slice(scripts.indexOf('function loadTrash('), scripts.indexOf('function renderTrashList'));
+    expect(load).toContain("'/api/emails/deleted?'");
+    expect(load).not.toContain('state.domain');
+    expect(scripts).not.toContain('btn-back');
+    expect(scripts).toContain('function leaveSpecialViews()');
+    const activate = scripts.slice(scripts.indexOf('function activateSidebar('));
+    expect(activate.slice(0, 120)).toContain('leaveSpecialViews();');
+  });
+});

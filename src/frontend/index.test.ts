@@ -50,4 +50,35 @@ describe('inboxPage', () => {
     expect(html).toContain('class="domain-tree-header" tabindex="0" role="button"');
     expect(html).toMatch(/class="rcpt-item"[^>]*tabindex="0" role="button"/);
   });
+
+  it('nests the domain list under the inbox entry, with sent after it', () => {
+    const html = inboxPage([{ domain: 'example.com', count: 0, recipients: [] }]);
+    const inbox = html.indexOf('id="inbox-entry"');
+    const domains = html.indexOf('<ul class="domain-list">');
+    const sent = html.indexOf('id="btn-sent"');
+    expect(inbox).toBeGreaterThan(-1);
+    expect(inbox).toBeLessThan(domains);
+    expect(domains).toBeLessThan(sent);
+  });
+
+  it('keeps the inbox expanded by default with a toggle, and sent outside the collapsible list', () => {
+    const html = inboxPage([]);
+    expect(html).toContain('id="inbox-entry"');
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).toContain('id="inbox-arrow"');
+    expect(html.indexOf('id="btn-sent"')).toBeGreaterThan(html.indexOf('</ul>'));
+    expect(html).toContain('class="sidebar-scroll"');
+  });
+
+  it('puts the deleted entry in the sidebar after sent and drops the toolbar trash/back buttons', () => {
+    const html = inboxPage([]);
+    const sent = html.indexOf('id="btn-sent"');
+    const trash = html.indexOf('id="btn-trash"');
+    expect(trash).toBeGreaterThan(sent);
+    expect(trash).toBeLessThan(html.indexOf('class="sidebar-footer"'));
+    expect(html).toContain('<span class="inbox-label">已删除</span>');
+    expect(html).not.toContain('id="btn-back"');
+    expect(html).not.toContain('回收站');
+    expect(html.match(/id="btn-trash"/g)).toHaveLength(1);
+  });
 });
