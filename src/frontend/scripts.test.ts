@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { drainPollingPages, scripts, buildEmailSrcdoc, emailCardHtml, esc, formatBytes, compareActivation, getPrefixedSubject, buildQuotedReply, formatTime, emailTimeValue, formatEmailTime } from './scripts';
+import { avatarHtml, drainPollingPages, scripts, buildEmailSrcdoc, emailCardHtml, esc, formatBytes, compareActivation, getPrefixedSubject, buildQuotedReply, formatTime, emailTimeValue, formatEmailTime } from './scripts';
 
 describe('HTML email remote-content boundary', () => {
   it('builds the initial iframe with remote sources disabled', () => {
@@ -215,5 +215,30 @@ describe('sidebar selection', () => {
     expect(scripts).toContain('function leaveSpecialViews()');
     const activate = scripts.slice(scripts.indexOf('function activateSidebar('));
     expect(activate.slice(0, 120)).toContain('leaveSpecialViews();');
+  });
+
+  it('renders a stable, escaped initial avatar', () => {
+    expect(avatarHtml('Anna <a@b.c>')).toBe(avatarHtml('Anna <a@b.c>'));
+    expect(avatarHtml('alice@x.com')).toContain('>A</span>');
+    expect(avatarHtml('<script>')).not.toContain('<script>');
+    expect(avatarHtml('', true)).toContain('email-avatar lg');
+    expect(avatarHtml('', true)).toContain('>?</span>');
+    expect(avatarHtml('张三 <z@x.com>')).toContain('>张</span>');
+    expect(scripts).toContain('function avatarHtml(');
+  });
+
+  it('puts avatar, meta row and actions in every list card', () => {
+    const html = emailCardHtml({ id: 'x1', is_read: 0, mail_from: 'a@b.c', date: '2026-08-01T00:00:00Z', subject: 'Hi', rcpt_to: 'u@b.c' }, null);
+    expect(html).toContain('class="email-avatar"');
+    expect(html).toContain('class="email-meta-row"');
+    expect(html.indexOf('email-btn-delete')).toBeGreaterThan(html.indexOf('email-recipient'));
+  });
+
+  it('deletes without a confirm dialog and offers undo through the restore API', () => {
+    expect(scripts).not.toContain('showConfirm');
+    expect(scripts).toContain('function deleteEmailWithUndo(id)');
+    expect(scripts).toContain("showToastMessage('邮件已删除', { label: '撤销'");
+    expect(scripts).toContain("'/api/emails/' + id + '/restore'");
+    expect(scripts).toContain("e.target.closest('.meta-delete')");
   });
 });

@@ -39,9 +39,6 @@ export function inboxPage(domains: DomainData[], version?: string): string {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Domain Inbox</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@400;600&display=swap">
 <script>(${bootTheme.toString()})();<\/script>
 <style>${styles}</style>
 </head>
@@ -52,11 +49,9 @@ export function inboxPage(domains: DomainData[], version?: string): string {
     <div class="sidebar-header">
       <div class="logo">
         <div class="logo-icon">
-          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <rect x="2" y="5" width="20" height="14" rx="2.5" stroke-width="1.4"/>
-            <path d="M2 8.5l8.7 5.8a1.5 1.5 0 001.6 0L21 8.5" stroke-width="1.4" stroke-linecap="round"/>
-            <circle cx="17.5" cy="7" r="3" fill="var(--accent)" stroke="var(--bg-surface)" stroke-width="1.5" opacity="0.85"/>
-            <text x="17.5" y="8.2" text-anchor="middle" font-size="3.5" font-weight="700" fill="var(--bg-surface)" font-family="monospace" stroke="none">D</text>
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="5" width="18" height="14" rx="3"/>
+            <path d="M3.5 8l7.6 5.2a1.6 1.6 0 001.8 0L20.5 8"/>
           </svg>
         </div>
         <div class="logo-text">
@@ -68,11 +63,12 @@ export function inboxPage(domains: DomainData[], version?: string): string {
     <div class="sidebar-scroll">
       <div class="sidebar-label">域名 / 收件人</div>
       <div class="inbox-entry" id="inbox-entry" role="button" tabindex="0" title="全部邮件" aria-expanded="true">
+        <span class="inbox-arrow" id="inbox-arrow" role="button" tabindex="0" title="折叠 / 展开域名" aria-label="折叠或展开域名列表">▶</span>
         <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 19v-8.93a2 2 0 01.89-1.664l7-4.666a2 2 0 012.22 0l7 4.666A2 2 0 0121 10.07V19M3 19a2 2 0 002 2h14a2 2 0 002-2M3 19l6.75-4.5M21 19l-6.75-4.5M3 10l6.75 4.5M21 10l-6.75 4.5m0 0l-1.14.76a2 2 0 01-2.22 0l-1.14-.76"/></svg>
         <span class="inbox-label">收件箱</span>
-        <span class="inbox-arrow" id="inbox-arrow" role="button" tabindex="0" title="折叠 / 展开域名" aria-label="折叠或展开域名列表">▶</span>
       </div>
       <ul class="domain-list">${domainItems}</ul>
+      <div class="nav-divider"></div>
       <div class="inbox-entry" id="btn-sent" role="button" tabindex="0" title="已发送">
         <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
         <span class="inbox-label">已发送</span>

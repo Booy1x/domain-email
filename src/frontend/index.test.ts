@@ -25,12 +25,12 @@ describe('inboxPage', () => {
     expect(html).toContain('该域名暂无收件人');
   });
 
-  it('loads fonts via link tags instead of a stylesheet-blocking @import', () => {
+  it('uses system fonts and makes no third-party font requests', () => {
     const html = inboxPage([]);
-    expect(html).toContain('rel="preconnect" href="https://fonts.googleapis.com"');
-    expect(html).toContain('rel="preconnect" href="https://fonts.gstatic.com" crossorigin');
-    expect(html).toContain('rel="stylesheet" href="https://fonts.googleapis.com/css2');
-    expect(html).not.toContain("@import url('https://fonts.googleapis.com");
+    expect(html).not.toContain('fonts.googleapis.com');
+    expect(html).not.toContain('fonts.gstatic.com');
+    expect(html).not.toContain('@import');
+    expect(html).toContain('-apple-system');
   });
 
   it('boots the theme before first paint and renders the toggle button', () => {
@@ -80,5 +80,20 @@ describe('inboxPage', () => {
     expect(html).not.toContain('id="btn-back"');
     expect(html).not.toContain('回收站');
     expect(html.match(/id="btn-trash"/g)).toHaveLength(1);
+  });
+
+  it('places the inbox collapse arrow before the inbox icon', () => {
+    const html = inboxPage([]);
+    const entry = html.slice(html.indexOf('id="inbox-entry"'), html.indexOf('<ul class="domain-list">'));
+    expect(entry.indexOf('id="inbox-arrow"')).toBeGreaterThan(-1);
+    expect(entry.indexOf('id="inbox-arrow"')).toBeLessThan(entry.indexOf('<svg'));
+    expect(entry.indexOf('<svg')).toBeLessThan(entry.indexOf('inbox-label'));
+  });
+
+  it('keeps the theme mechanism free of a duplicate prefers-color-scheme variable set', () => {
+    const html = inboxPage([]);
+    const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+    expect(css).not.toContain('@media (prefers-color-scheme');
+    expect(css).toContain(':root[data-theme="dark"]');
   });
 });
