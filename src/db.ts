@@ -520,11 +520,20 @@ export function getDomains(db: D1Database): Promise<D1Result<{ domain: string; c
     WHERE deleted_at IS NULL AND storage_state = 'active' AND direction = 'in' GROUP BY domain ORDER BY domain`).all();
 }
 
-export async function checkRateLimit(db: D1Database, maxPerHour: number): Promise<boolean> {
+export async function checkRateLimit(
+  db: D1Database,
+  maxPerHour: number,
+  direction: 'in' | 'out',
+  now: number = Date.now(),
+): Promise<boolean> {
   if (maxPerHour <= 0) return true;
+  // created_at is written as ISO-8601 by both ingest and send, so a bound ISO cutoff compares
+  // lexicographically and can use idx_emails_direction_created_at instead of a full scan.
+  const cutoff = new Date(now - 3600_000).toISOString();
   try {
     const result = await db.prepare(`SELECT COUNT(*) AS cnt FROM emails
-      WHERE cast(strftime('%s', created_at) as integer) > cast(strftime('%s', 'now', '-1 hour') as integer)`)
+      WHERE direction = ? AND created_at > ?`)
+      .bind(direction, cutoff)
       .first<{ cnt: number }>();
     return !result || result.cnt < maxPerHour;
   } catch {
