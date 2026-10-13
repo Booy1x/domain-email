@@ -79,24 +79,10 @@ export const styles = `
   .sidebar {
     width: 248px; min-width: 248px;
     display: flex; flex-direction: column;
-    --bg-hover: rgba(255,255,255,0.06);
-    --bg-active: rgba(255,255,255,0.11);
-    --border: rgba(255,255,255,0.09);
-    --border-strong: rgba(255,255,255,0.22);
-    --text-1: #eef1f8;
-    --text-2: #b4bcd0;
-    --text-3: #7e88a1;
-    --accent: #8ea4ff;
-    --accent-dim: rgba(142,164,255,0.18);
-    --accent-text: #b4c2ff;
-    --accent-solid: #5b7bff;
-    --scrollbar: rgba(255,255,255,0.16);
-    --scrollbar-hover: rgba(255,255,255,0.30);
-    background: #141b2e;
-    color: var(--text-1);
-    border-right: 1px solid #0a0f1d;
+    background: #e8ecf3;
+    border-right: 1px solid var(--border);
   }
-  :root[data-theme="dark"] .sidebar { background: #0a0e1a; border-right-color: var(--border); }
+  :root[data-theme="dark"] .sidebar { background: #0a0e1a; }
 
   .sidebar-header { padding: 16px 16px 12px; }
 
