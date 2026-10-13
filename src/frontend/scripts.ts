@@ -139,8 +139,11 @@ export function avatarHtml(name: string, large?: boolean): string {
   var text = String(name || '');
   var initial = (text.replace(/^[^A-Za-z0-9\u4e00-\u9fa5]+/, '').charAt(0) || '?').toUpperCase();
   var hash = 0;
-  for (var i = 0; i < text.length; i++) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
-  return '<span class="email-avatar' + (large ? ' lg' : '') + '" style="background:hsl(' + (hash % 360) + ',46%,46%)" aria-hidden="true">' + esc(initial) + '</span>';
+  for (var i = 0; i < text.length; i++) hash = text.charCodeAt(i) + ((hash << 5) - hash);
+  var hue = Math.abs(hash) % 360;
+  var sat = 35 + (Math.abs(hash >> 8) % 20);
+  var light = 40 + (Math.abs(hash >> 16) % 15);
+  return '<span class="email-avatar' + (large ? ' lg' : '') + '" style="background:hsl(' + hue + ', ' + sat + '%, ' + light + '%)" aria-hidden="true">' + esc(initial) + '</span>';
 }
 
 export function emailCardHtml(e: { id: string; is_read: number; mail_from: string; date?: string | null; created_at?: string | null; subject: string; rcpt_to?: string }, selectedId: string | null): string {
