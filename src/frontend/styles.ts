@@ -127,7 +127,7 @@ export const styles = `
     color: var(--text-3);
   }
 
-  .domain-list { flex: 1; overflow-y: auto; list-style: none; padding: 4px 8px; }
+  .domain-list { flex: 1; overflow-y: auto; list-style: none; padding: 4px 8px 4px 20px; }
 
   .inbox-entry {
     display: flex; align-items: center; gap: 8px;

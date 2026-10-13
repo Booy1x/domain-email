@@ -50,4 +50,14 @@ describe('inboxPage', () => {
     expect(html).toContain('class="domain-tree-header" tabindex="0" role="button"');
     expect(html).toMatch(/class="rcpt-item"[^>]*tabindex="0" role="button"/);
   });
+
+  it('nests the domain list under the inbox entry, with sent after it', () => {
+    const html = inboxPage([{ domain: 'example.com', count: 0, recipients: [] }]);
+    const inbox = html.indexOf('id="inbox-entry"');
+    const domains = html.indexOf('<ul class="domain-list">');
+    const sent = html.indexOf('id="btn-sent"');
+    expect(inbox).toBeGreaterThan(-1);
+    expect(inbox).toBeLessThan(domains);
+    expect(domains).toBeLessThan(sent);
+  });
 });
