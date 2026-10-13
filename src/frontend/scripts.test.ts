@@ -194,4 +194,11 @@ describe('sidebar selection', () => {
     expect(body).toContain("inboxEntryEl.classList.remove('active')");
     expect(body).toContain("btnSentEl.classList.add('active')");
   });
+
+  it('toggles the domain list from the inbox arrow without navigating', () => {
+    expect(scripts).toContain('function setInboxExpanded(expanded)');
+    expect(scripts).toContain("e.target.closest('#inbox-arrow')");
+    expect(scripts).toContain("list.classList.toggle('collapsed', !expanded)");
+    expect(scripts).toContain('setInboxExpanded(true);');
+  });
 });

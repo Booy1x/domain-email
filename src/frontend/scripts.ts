@@ -361,14 +361,27 @@ if (btnSent) {
   });
 }
 
+function setInboxExpanded(expanded) {
+  var entry = document.getElementById('inbox-entry');
+  var list = document.querySelector('.domain-list');
+  if (entry) entry.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  if (list) list.classList.toggle('collapsed', !expanded);
+}
+
 var inboxEntry = document.getElementById('inbox-entry');
 if (inboxEntry) {
-  inboxEntry.addEventListener('click', function() { loadHomeEmails(); });
-  inboxEntry.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      loadHomeEmails();
+  inboxEntry.addEventListener('click', function(e) {
+    if (e.target.closest('#inbox-arrow')) {
+      setInboxExpanded(inboxEntry.getAttribute('aria-expanded') !== 'true');
+      return;
     }
+    loadHomeEmails();
+  });
+  inboxEntry.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    if (e.target.closest('#inbox-arrow')) setInboxExpanded(inboxEntry.getAttribute('aria-expanded') !== 'true');
+    else loadHomeEmails();
   });
 }
 
@@ -425,6 +438,7 @@ function activateSidebar(domain, rcpt) {
     setDomainOpen(null);
     return;
   }
+  setInboxExpanded(true);
   setDomainOpen(domain);
   document.querySelectorAll('.domain-tree').forEach(function(tree) {
     if (tree.dataset.domain !== domain) return;

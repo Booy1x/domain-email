@@ -60,4 +60,13 @@ describe('inboxPage', () => {
     expect(inbox).toBeLessThan(domains);
     expect(domains).toBeLessThan(sent);
   });
+
+  it('keeps the inbox expanded by default with a toggle, and sent outside the collapsible list', () => {
+    const html = inboxPage([]);
+    expect(html).toContain('id="inbox-entry"');
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).toContain('id="inbox-arrow"');
+    expect(html.indexOf('id="btn-sent"')).toBeGreaterThan(html.indexOf('</ul>'));
+    expect(html).toContain('class="sidebar-scroll"');
+  });
 });
