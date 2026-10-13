@@ -729,10 +729,8 @@ export const styles = `
     .main { width: 100%; min-height: 0; }
     .toolbar { padding: calc(10px + env(safe-area-inset-top)) 12px 10px; gap: 8px; flex-wrap: wrap; }
     .mobile-only { display: flex; flex: 0 0 auto; }
-    .toolbar .btn-back { display: none; }
     .search-wrap { max-width: none; min-width: 0; flex: 1; order: 0; }
     .email-total { margin-left: 0; }
-    #btn-trash, #btn-back { display: none !important; }
     .split { flex-direction: row; }
     .email-list { width: 100%; min-width: 100%; height: auto; border-right: 0; border-bottom: 0; padding-bottom: 8px; }
     .preview { display: none; width: 100%; min-width: 100%; }

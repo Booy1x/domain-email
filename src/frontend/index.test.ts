@@ -69,4 +69,16 @@ describe('inboxPage', () => {
     expect(html.indexOf('id="btn-sent"')).toBeGreaterThan(html.indexOf('</ul>'));
     expect(html).toContain('class="sidebar-scroll"');
   });
+
+  it('puts the deleted entry in the sidebar after sent and drops the toolbar trash/back buttons', () => {
+    const html = inboxPage([]);
+    const sent = html.indexOf('id="btn-sent"');
+    const trash = html.indexOf('id="btn-trash"');
+    expect(trash).toBeGreaterThan(sent);
+    expect(trash).toBeLessThan(html.indexOf('class="sidebar-footer"'));
+    expect(html).toContain('<span class="inbox-label">已删除</span>');
+    expect(html).not.toContain('id="btn-back"');
+    expect(html).not.toContain('回收站');
+    expect(html.match(/id="btn-trash"/g)).toHaveLength(1);
+  });
 });

@@ -77,6 +77,10 @@ export function inboxPage(domains: DomainData[], version?: string): string {
         <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
         <span class="inbox-label">已发送</span>
       </div>
+      <div class="inbox-entry" id="btn-trash" role="button" tabindex="0" title="已删除">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        <span class="inbox-label">已删除</span>
+      </div>
     </div>
     <div class="sidebar-footer">
       <span class="domain-total" id="total-count">0 个域名</span>
@@ -104,12 +108,6 @@ export function inboxPage(domains: DomainData[], version?: string): string {
         </button>
       </div>
       <span class="email-total" id="email-count"></span>
-      <button id="btn-trash" class="btn-icon" title="回收站" aria-label="回收站" style="margin-left:auto;">
-        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-      </button>
-      <button id="btn-back" class="btn-icon" title="返回收件箱" aria-label="返回收件箱" style="display:none;">
-        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
-      </button>
     </div>
 
     <div class="split">
@@ -135,9 +133,9 @@ export function inboxPage(domains: DomainData[], version?: string): string {
     <svg width="19" height="19" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
     <span>已发送</span>
   </button>
-  <button class="mobile-nav-item" id="mobile-trash" type="button" aria-label="回收站">
+  <button class="mobile-nav-item" id="mobile-trash" type="button" aria-label="已删除">
     <svg width="19" height="19" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 01-1-1h-4a1 1 0 01-1 1v3M4 7h16"/></svg>
-    <span>回收站</span>
+    <span>已删除</span>
   </button>
 </nav>
 

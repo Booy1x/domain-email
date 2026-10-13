@@ -172,7 +172,6 @@ var state = {
   domain: '', rcptUser: '', emails: [], cursor: null, loading: false, hasMore: true,
   selectedId: null, totalLoaded: 0, view: 'home', openDomain: null,
   trashMode: false,
-  previousInbox: null,
   trash: { emails: [], cursor: null, loading: false, hasMore: true },
   sent: { emails: [], cursor: null, loading: false, hasMore: true }
 };
@@ -344,7 +343,7 @@ var mobileSent = document.getElementById('mobile-sent');
 var mobileTrash = document.getElementById('mobile-trash');
 if (mobileInbox) mobileInbox.addEventListener('click', function() { closeDomainDrawer(); loadHomeEmails(); });
 if (mobileSent) mobileSent.addEventListener('click', function() { closeDomainDrawer(); openSentView(); });
-if (mobileTrash) mobileTrash.addEventListener('click', function() { closeDomainDrawer(); document.getElementById('btn-trash').click(); });
+if (mobileTrash) mobileTrash.addEventListener('click', function() { closeDomainDrawer(); if (state.view !== 'trash') openTrashView(); });
 
 var lastEmail = null;
 
@@ -357,6 +356,19 @@ if (btnSent) {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       if (state.view !== 'sent') openSentView();
+    }
+  });
+}
+
+var btnTrash = document.getElementById('btn-trash');
+if (btnTrash) {
+  btnTrash.addEventListener('click', function() {
+    if (state.view !== 'trash') openTrashView();
+  });
+  btnTrash.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (state.view !== 'trash') openTrashView();
     }
   });
 }
@@ -428,12 +440,11 @@ function setDomainOpen(domain) {
 }
 
 function activateSidebar(domain, rcpt) {
+  leaveSpecialViews();
   document.querySelectorAll('.rcpt-item').forEach(function(el) { el.classList.remove('active'); });
   document.querySelectorAll('.domain-tree').forEach(function(el) { el.classList.remove('active'); });
   var inboxEntry = document.getElementById('inbox-entry');
   if (inboxEntry) inboxEntry.classList.toggle('active', !domain);
-  var btnSent = document.getElementById('btn-sent');
-  if (btnSent) btnSent.classList.remove('active');
   if (!domain) {
     setDomainOpen(null);
     return;
@@ -499,7 +510,7 @@ function updateBreadcrumb() {
   } else if (state.view === 'search') {
     html = '<span class="bc-label">搜索结果</span>';
   } else if (state.view === 'trash') {
-    html = '<span class="bc-label">回收站</span>';
+    html = '<span class="bc-label">已删除</span>';
   } else if (state.view === 'sent') {
     html = '<span class="bc-label">已发送</span>';
   } else if (state.view === 'domain') {
@@ -644,68 +655,44 @@ document.getElementById('email-list').addEventListener('scroll', function(e) {
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200 && state.hasMore && !state.loading) loadEmails();
 });
 
-document.getElementById('btn-trash').addEventListener('click', function() {
-  state.previousInbox = {
-    domain: state.domain,
-    rcptUser: state.rcptUser,
-    view: state.view,
-    search: document.getElementById('search').value
-  };
+function markSpecialView(activeId) {
+  var inbox = document.getElementById('inbox-entry');
+  if (inbox) inbox.classList.remove('active');
+  document.querySelectorAll('.rcpt-item.active, .domain-tree.active').forEach(function(el) { el.classList.remove('active'); });
+  ['btn-sent', 'btn-trash'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.classList.toggle('active', id === activeId);
+  });
+}
+
+function leaveSpecialViews() {
+  state.trashMode = false;
+  state.loading = false;
+  document.getElementById('search').style.display = '';
+  ['btn-sent', 'btn-trash'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.classList.remove('active');
+  });
+}
+
+function openTrashView() {
   state.trashMode = true;
   state.view = 'trash';
   state.loading = false;
   state.selectedId = null;
   document.body.classList.remove('email-open');
   setMobileNav('trash');
+  closeDomainDrawer();
   listRequestSeq++;
   detailRequestSeq++;
-  document.getElementById('btn-trash').style.display = 'none';
-  document.getElementById('btn-back').style.display = 'flex';
   document.getElementById('search').style.display = 'none';
   document.getElementById('email-count').style.display = '';
-  document.querySelector('.domain-list').style.opacity = '0.3';
-  document.querySelector('.domain-list').style.pointerEvents = 'none';
+  markSpecialView('btn-trash');
   document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
   updateBreadcrumb();
   loadTrash(true);
   syncHash();
-});
-document.getElementById('btn-back').addEventListener('click', function() {
-  var prev = state.previousInbox;
-  state.previousInbox = null;
-  state.trashMode = false;
-  document.body.classList.remove('email-open');
-  state.loading = false;
-  listRequestSeq++;
-  detailRequestSeq++;
-  document.getElementById('btn-trash').style.display = 'flex';
-  document.getElementById('btn-back').style.display = 'none';
-  document.getElementById('search').style.display = '';
-  document.getElementById('email-count').style.display = '';
-  document.querySelector('.domain-list').style.opacity = '';
-  document.querySelector('.domain-list').style.pointerEvents = '';
-  var btnSentEl = document.getElementById('btn-sent');
-  if (btnSentEl) btnSentEl.classList.remove('active');
-  state.cursor = null; state.emails = []; state.hasMore = true; state.selectedId = null; state.totalLoaded = 0;
-  document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
-  if (prev) {
-    state.domain = prev.domain || '';
-    state.rcptUser = prev.rcptUser || '';
-    state.view = prev.view || 'home';
-    document.getElementById('search').value = prev.search || '';
-    toggleSearchClear();
-  }
-  updateBreadcrumb();
-  if (state.view === 'home') {
-    loadHomeEmails();
-  } else if (state.view === 'sent') {
-    openSentView();
-  } else {
-    activateSidebar(state.domain, state.rcptUser);
-    loadEmails(true);
-    syncHash();
-  }
-});
+}
 
 function loadTrash(reset) {
   if ((state.trash.loading || !state.trash.hasMore) && !reset) return;
@@ -742,7 +729,7 @@ function loadTrash(reset) {
 function renderTrashList() {
   document.getElementById('email-count').textContent = state.trash.emails.length + (state.trash.hasMore ? '+' : '') + ' 封已删除';
   if (state.trash.emails.length === 0) {
-    document.getElementById('email-list').innerHTML = '<div class="email-list-empty">回收站为空</div>';
+    document.getElementById('email-list').innerHTML = '<div class="email-list-empty">暂无已删除邮件</div>';
     return;
   }
   document.getElementById('email-list').innerHTML = state.trash.emails.map(function(e) {
@@ -761,31 +748,18 @@ function renderTrashList() {
 }
 
 function openSentView() {
-  state.previousInbox = {
-    domain: state.domain,
-    rcptUser: state.rcptUser,
-    view: state.view,
-    search: document.getElementById('search').value
-  };
   state.trashMode = false;
   state.view = 'sent';
   state.loading = false;
   state.selectedId = null;
   document.body.classList.remove('email-open');
   setMobileNav('sent');
+  closeDomainDrawer();
   listRequestSeq++;
   detailRequestSeq++;
-  document.getElementById('btn-trash').style.display = 'none';
-  document.getElementById('btn-back').style.display = 'flex';
   document.getElementById('search').style.display = 'none';
   document.getElementById('email-count').style.display = '';
-  document.querySelector('.domain-list').style.opacity = '0.3';
-  document.querySelector('.domain-list').style.pointerEvents = 'none';
-  var inboxEntryEl = document.getElementById('inbox-entry');
-  if (inboxEntryEl) inboxEntryEl.classList.remove('active');
-  document.querySelectorAll('.rcpt-item.active, .domain-tree.active').forEach(function(el) { el.classList.remove('active'); });
-  var btnSentEl = document.getElementById('btn-sent');
-  if (btnSentEl) btnSentEl.classList.add('active');
+  markSpecialView('btn-sent');
   document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';
   updateBreadcrumb();
   loadSent(true);
@@ -1229,20 +1203,9 @@ function applyHash() {
     if (raw.charAt(0) === '/') raw = raw.slice(1);
     var parts = raw.split('/');
     var first = parts[0] || '';
-    if (state.trashMode && first !== 'trash') {
-      state.trashMode = false;
-      state.previousInbox = null;
-      state.loading = false;
-      listRequestSeq++;
-      detailRequestSeq++;
-      document.getElementById('btn-trash').style.display = 'flex';
-      document.getElementById('btn-back').style.display = 'none';
-      document.getElementById('search').style.display = '';
-      document.querySelector('.domain-list').style.opacity = '';
-      document.querySelector('.domain-list').style.pointerEvents = '';
-    }
+    if (first !== 'trash' && first !== 'sent') leaveSpecialViews();
     if (first === 'trash') {
-      if (!state.trashMode) document.getElementById('btn-trash').click();
+      if (state.view !== 'trash') openTrashView();
     } else if (first === 'sent') {
       if (state.view !== 'sent') openSentView();
     } else if (first === 'd' && parts[1]) {
