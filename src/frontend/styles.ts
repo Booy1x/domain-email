@@ -135,6 +135,7 @@ export const styles = `
     font-size: 8px; color: var(--text-3); border-radius: 4px; transform: rotate(90deg);
     transition: transform 0.15s ease, background 0.15s ease;
   }
+  #btn-sent, #btn-trash { padding-left: 38px; } /* align icons with the inbox icon, which sits after the 18px arrow + 8px gap */
   .inbox-arrow:hover { background: var(--bg-hover); color: var(--text-1); }
   .inbox-entry[aria-expanded="false"] .inbox-arrow { transform: rotate(0deg); }
 

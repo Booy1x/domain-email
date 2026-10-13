@@ -81,4 +81,12 @@ describe('inboxPage', () => {
     expect(html).not.toContain('回收站');
     expect(html.match(/id="btn-trash"/g)).toHaveLength(1);
   });
+
+  it('places the inbox collapse arrow before the inbox icon', () => {
+    const html = inboxPage([]);
+    const entry = html.slice(html.indexOf('id="inbox-entry"'), html.indexOf('<ul class="domain-list">'));
+    expect(entry.indexOf('id="inbox-arrow"')).toBeGreaterThan(-1);
+    expect(entry.indexOf('id="inbox-arrow"')).toBeLessThan(entry.indexOf('<svg'));
+    expect(entry.indexOf('<svg')).toBeLessThan(entry.indexOf('inbox-label'));
+  });
 });
