@@ -672,9 +672,8 @@ export const styles = `
       width: min(86vw, 320px); min-width: 0; max-height: none;
       border-right: 1px solid var(--border); border-bottom: 0;
       transform: translateX(-105%); transition: transform 0.22s ease;
-      box-shadow: 14px 0 36px rgba(10,15,30,0.35);
     }
-    .app.drawer-open .sidebar { transform: translateX(0); }
+    .app.drawer-open .sidebar { transform: translateX(0); box-shadow: 14px 0 36px rgba(10,15,30,0.35); }
     .app.drawer-open + .drawer-backdrop { display: block; position: fixed; inset: 0; z-index: 1000; background: rgba(10,15,30,0.55); }
     .sidebar-header { padding-top: calc(16px + env(safe-area-inset-top)); }
     .domain-list { display: block; overflow-y: auto; overflow-x: hidden; padding: 2px 8px 4px 22px; }
