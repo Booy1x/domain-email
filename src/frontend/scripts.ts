@@ -767,6 +767,9 @@ function openSentView() {
   document.getElementById('email-count').style.display = '';
   document.querySelector('.domain-list').style.opacity = '0.3';
   document.querySelector('.domain-list').style.pointerEvents = 'none';
+  var inboxEntryEl = document.getElementById('inbox-entry');
+  if (inboxEntryEl) inboxEntryEl.classList.remove('active');
+  document.querySelectorAll('.rcpt-item.active, .domain-tree.active').forEach(function(el) { el.classList.remove('active'); });
   var btnSentEl = document.getElementById('btn-sent');
   if (btnSentEl) btnSentEl.classList.add('active');
   document.getElementById('preview').innerHTML = '<div class="preview-empty"><span>选择一封邮件阅读</span></div>';

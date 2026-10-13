@@ -186,3 +186,12 @@ describe('HTML email remote-content boundary', () => {
     expect(scripts).not.toContain('&ts=');
   });
 });
+
+describe('sidebar selection', () => {
+  it('clears the inbox highlight when switching to the sent view', () => {
+    const start = scripts.indexOf('function openSentView(');
+    const body = scripts.slice(start, scripts.indexOf('function loadSent(', start));
+    expect(body).toContain("inboxEntryEl.classList.remove('active')");
+    expect(body).toContain("btnSentEl.classList.add('active')");
+  });
+});
