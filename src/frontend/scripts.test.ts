@@ -66,6 +66,14 @@ describe('HTML email remote-content boundary', () => {
     expect(scripts).toContain("inboxEntry.classList.toggle('active', !domain)");
   });
 
+  it('double-clicking the recipient copies only the address, not the 发至 label', () => {
+    expect(scripts).toContain('发至 <span class="preview-to-addr"');
+    expect(scripts).toContain("addEventListener('dblclick'");
+    expect(scripts).toContain("closest('.preview-to-addr')");
+    expect(scripts).toContain('range.selectNodeContents(addr)');
+    expect(scripts).toContain("copyText(addr.textContent || ''");
+  });
+
   it('wires the theme toggle to data-theme and localStorage', () => {
     expect(scripts).toContain('function toggleTheme()');
     expect(scripts).toContain("getElementById('btn-theme')");

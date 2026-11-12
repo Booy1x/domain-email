@@ -931,7 +931,7 @@ function loadEmailDetail(id) {
               avatarHtml(email.mail_from, true) +
               '<div class="preview-people">' +
                 '<span class="from">' + esc(email.mail_from) + '</span>' +
-                '<span class="preview-to"><span class="preview-to-text">发至 ' + esc(email.rcpt_to) + '</span>' +
+                '<span class="preview-to"><span class="preview-to-text">发至 <span class="preview-to-addr" title="双击复制地址">' + esc(email.rcpt_to) + '</span></span>' +
                   '<button class="meta-copy" data-addr="' + esc(email.rcpt_to).replace(/"/g, '&quot;') + '" title="复制地址" aria-label="复制地址"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>' +
                 '</span>' +
               '</div>' +
@@ -1150,6 +1150,22 @@ function copyText(text, btn) {
     done();
   }
 }
+
+// 双击收件地址:只选中并复制地址本身,不带前面的「发至」
+document.getElementById('preview').addEventListener('dblclick', function(e) {
+  var addr = e.target.closest('.preview-to-addr');
+  if (!addr) return;
+  e.preventDefault();
+  var sel = window.getSelection();
+  if (sel) {
+    var range = document.createRange();
+    range.selectNodeContents(addr);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  var wrap = addr.closest('.preview-to');
+  copyText(addr.textContent || '', wrap ? wrap.querySelector('.meta-copy') : null);
+});
 
 document.getElementById('preview').addEventListener('click', function(e) {
   var replyBtn = e.target.closest('.meta-reply');

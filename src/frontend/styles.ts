@@ -393,6 +393,7 @@ export const styles = `
     color: var(--text-3); font-size: 12.5px;
   }
   .preview-to-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .preview-to-addr { user-select: all; cursor: copy; }
   .preview-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
   .preview-date { margin-top: 12px; font-size: 12px; color: var(--text-3); }
 
